@@ -64,11 +64,10 @@ function AuthenticatedLayout() {
         "fixed inset-y-0 left-0 z-40 w-64 flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border transition-transform lg:static lg:flex lg:translate-x-0",
         open ? "flex translate-x-0" : "hidden lg:flex -translate-x-full",
       )}>
-        <div className="flex items-center gap-3 px-5 py-5 border-b border-sidebar-border">
-          <img src="/sanlayan-logo.png" alt="SANLAYAN" className="h-9 w-9 rounded object-cover" />
-          <div>
-            <div className="text-sm font-semibold tracking-wide">SANLAYAN</div>
-            <div className="text-[10px] uppercase tracking-widest text-sidebar-foreground/60">LEBMS</div>
+        <div className="px-5 py-5 border-b border-sidebar-border">
+          <div className="text-lg font-bold tracking-tight leading-none">SANLAYAN</div>
+          <div className="mt-1.5 text-[10px] font-medium uppercase tracking-[0.18em] text-sidebar-foreground/60">
+            Lab Management System
           </div>
         </div>
         <nav className="flex-1 overflow-y-auto p-3 space-y-0.5">
@@ -77,17 +76,17 @@ function AuthenticatedLayout() {
               key={item.to}
               to={item.to}
               onClick={() => setOpen(false)}
-              className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              className="group flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
               activeProps={{ className: "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary hover:text-sidebar-primary-foreground" }}
             >
-              <item.icon className="h-4 w-4" />
-              {item.label}
+              <item.icon className="h-4 w-4 shrink-0 transition-transform group-hover:scale-110" />
+              <span className="truncate">{item.label}</span>
             </Link>
           ))}
         </nav>
         <div className="border-t border-sidebar-border p-4">
-          <div className="text-xs text-sidebar-foreground/60">Signed in as</div>
-          <div className="text-sm font-medium truncate">{user.fullName}</div>
+          <div className="text-[10px] uppercase tracking-widest text-sidebar-foreground/50">Signed in as</div>
+          <div className="mt-1 text-sm font-medium truncate">{user.fullName}</div>
           <div className="text-[11px] text-sidebar-foreground/50 capitalize">{role}</div>
           <Button variant="secondary" size="sm" className="mt-3 w-full" onClick={signOut}>
             <LogOut className="h-4 w-4 mr-2" /> Sign out
