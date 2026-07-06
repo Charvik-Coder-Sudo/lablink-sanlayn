@@ -52,11 +52,10 @@ function AuthPage() {
       {/* Brand side */}
       <div className="hidden lg:flex flex-col justify-between p-12 bg-secondary text-secondary-foreground relative overflow-hidden">
         <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_20%_20%,var(--color-primary),transparent_60%)]" />
-        <div className="relative flex items-center gap-3">
-          <img src="/sanlayan-logo.png" alt="SANLAYAN" className="h-12 w-12 rounded object-cover" />
-          <div>
-            <div className="text-lg font-semibold tracking-wide">SANLAYAN</div>
-            <div className="text-xs tracking-widest text-secondary-foreground/60">TECHNOLOGIES</div>
+        <div className="relative">
+          <div className="text-2xl font-bold tracking-tight">SANLAYAN</div>
+          <div className="mt-1 text-[11px] font-medium uppercase tracking-[0.24em] text-secondary-foreground/60">
+            Lab Management System
           </div>
         </div>
         <div className="relative">
@@ -76,11 +75,10 @@ function AuthPage() {
       <div className="flex items-center justify-center p-6 lg:p-12">
         <Card className="w-full max-w-md shadow-elevated border-border">
           <CardContent className="p-8">
-            <div className="flex lg:hidden items-center gap-3 mb-6">
-              <img src="/sanlayan-logo.png" alt="SANLAYAN" className="h-10 w-10 rounded" />
-              <div>
-                <div className="font-semibold">SANLAYAN</div>
-                <div className="text-[10px] tracking-widest text-muted-foreground">LEBMS</div>
+            <div className="lg:hidden mb-6">
+              <div className="text-xl font-bold tracking-tight">SANLAYAN</div>
+              <div className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground mt-1">
+                Lab Management System
               </div>
             </div>
             <h2 className="text-xl font-semibold">Sign in</h2>
