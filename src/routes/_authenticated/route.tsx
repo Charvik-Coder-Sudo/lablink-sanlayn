@@ -96,20 +96,20 @@ function AuthenticatedLayout() {
 
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b bg-card px-4 lg:px-8 h-14">
-          <button className="lg:hidden p-2 -ml-2 rounded hover:bg-accent" onClick={() => setOpen(!open)}>
+        <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b bg-card/95 backdrop-blur px-4 lg:px-8 h-14">
+          <button className="lg:hidden p-2 -ml-2 rounded hover:bg-accent" onClick={() => setOpen(!open)} aria-label="Toggle navigation">
             <Menu className="h-5 w-5" />
           </button>
-          <div className="flex items-center gap-2">
-            <img src="/sanlayan-logo.png" alt="" className="h-7 w-7 rounded object-cover lg:hidden" />
-            <div className="text-sm font-semibold">Lab Equipment Booking</div>
+          <div className="min-w-0 flex items-center gap-2">
+            <span className="lg:hidden text-sm font-bold tracking-tight">SANLAYAN</span>
+            <span className="hidden lg:inline text-sm font-semibold text-muted-foreground">Lab Equipment Booking</span>
           </div>
           <div className="flex items-center gap-3">
             <div className="hidden sm:block text-right">
-              <div className="text-xs font-medium">{user.fullName}</div>
-              <div className="text-[11px] text-muted-foreground capitalize">{role} · {user.department ?? "—"}</div>
+              <div className="text-xs font-medium truncate max-w-[180px]">{user.fullName}</div>
+              <div className="text-[11px] text-muted-foreground capitalize truncate max-w-[180px]">{role} · {user.department ?? "—"}</div>
             </div>
-            <div className="h-9 w-9 rounded-full bg-primary text-primary-foreground grid place-items-center text-sm font-semibold">
+            <div className="h-9 w-9 rounded-full bg-primary text-primary-foreground grid place-items-center text-sm font-semibold shadow-sm">
               {user.fullName.slice(0,1).toUpperCase()}
             </div>
           </div>
