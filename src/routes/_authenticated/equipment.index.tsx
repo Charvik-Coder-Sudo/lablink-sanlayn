@@ -16,7 +16,7 @@ import { toast } from "sonner";
 import { Plus, Search, Pencil, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 
-export const Route = createFileRoute("/_authenticated/equipment")({
+export const Route = createFileRoute("/_authenticated/equipment/")({
   component: EquipmentListPage,
 });
 
