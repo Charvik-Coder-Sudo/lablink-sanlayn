@@ -13,10 +13,9 @@
    bun install
    ```
 2. The `.env` file is auto-provisioned by Lovable Cloud with:
-   - `SUPABASE_URL`
-   - `SUPABASE_PUBLISHABLE_KEY`
-   - `VITE_SUPABASE_URL`
-   - `VITE_SUPABASE_PUBLISHABLE_KEY`
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY` (admin operations)
 3. Start the dev server
    ```bash
    bun run dev

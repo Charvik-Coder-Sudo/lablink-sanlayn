@@ -16,13 +16,11 @@ bun run build
 The build output is a self-contained bundle. Environment variables required at
 runtime:
 
-| Variable                       | Purpose                                |
-|--------------------------------|----------------------------------------|
-| `SUPABASE_URL`                 | Server-side Supabase URL               |
-| `SUPABASE_PUBLISHABLE_KEY`     | Server publishable key                 |
-| `SUPABASE_SERVICE_ROLE_KEY`    | Server service-role (admin ops)        |
-| `VITE_SUPABASE_URL`            | Browser Supabase URL                   |
-| `VITE_SUPABASE_PUBLISHABLE_KEY`| Browser publishable key                |
+| Variable                               | Purpose                                |
+|----------------------------------------|----------------------------------------|
+| `NEXT_PUBLIC_SUPABASE_URL`             | Supabase URL (browser and server)      |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Publishable key (browser and server)    |
+| `SUPABASE_SERVICE_ROLE_KEY`            | Server service-role (admin ops)        |
 
 ## Ubuntu (LAN)
 
