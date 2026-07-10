@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { cancelBooking, listBookings, markReturned } from "@/lib/bookings";
 import { useSessionUser } from "@/lib/use-session";
-import { isPrivileged } from "@/lib/session";
+import { isAdmin, isPrivileged } from "@/lib/session";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,14 +20,20 @@ export const Route = createFileRoute("/_authenticated/bookings")({
 function BookingsPage() {
   const { data: user } = useSessionUser();
   const canManage = user ? isPrivileged(user.roles) : false;
+  const isManager = user ? !isAdmin(user.roles) && isPrivileged(user.roles) : false;
   const [scope, setScope] = useState<"mine" | "all">(canManage ? "all" : "mine");
   const [status, setStatus] = useState<string>("all");
   const [search, setSearch] = useState("");
   const qc = useQueryClient();
 
   const q = useQuery({
-    queryKey: ["bookings", scope, status],
-    queryFn: () => listBookings({ scope, status: status === "all" ? undefined : status, limit: 200 }),
+    queryKey: ["bookings", scope, status, user?.department],
+    queryFn: () => listBookings({
+      scope,
+      status: status === "all" ? undefined : status,
+      limit: 200,
+      managerDepartment: isManager ? user?.department : undefined,
+    }),
   });
 
   const filtered = (q.data?.rows ?? []).filter((b) => {
@@ -52,8 +58,10 @@ function BookingsPage() {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  function canCancel(b: { user_id: string; status: string; booking_date: string; start_time: string }) {
+  function canCancel(b: { user_id: string; status: string; booking_date: string; start_time: string; profile?: { department?: string | null } | null }) {
     if (b.status !== "booked") return false;
+    if (isAdmin(user?.roles ?? [])) return true;
+    if (isManager && b.profile?.department && b.profile.department !== user?.department) return false;
     if (canManage) return true;
     if (b.user_id !== user?.id) return false;
     return new Date(`${b.booking_date}T${b.start_time}`) > new Date();

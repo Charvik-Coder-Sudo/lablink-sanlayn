@@ -7,6 +7,7 @@ import { createBookingServerFn } from "@/lib/bookings.server";
 import { supabase } from "@/integrations/supabase/client";
 import { useState } from "react";
 import { format } from "date-fns";
+import { validateBookingTimeRange } from "@/lib/booking-validation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,6 +34,7 @@ function EquipmentDetailPage() {
   const [endTime, setEndTime] = useState("10:00");
   const [quantity, setQuantity] = useState(1);
   const [purpose, setPurpose] = useState("");
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   const submitBooking = useServerFn(createBookingServerFn);
   const equipment = useQuery({ queryKey: ["equipment", id], queryFn: () => getEquipment(id) });
@@ -49,6 +51,31 @@ function EquipmentDetailPage() {
     },
   });
 
+  const availabilityPreview = useQuery({
+    queryKey: ["availability-preview", id, date],
+    enabled: !!equipment.data,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("bookings")
+        .select("id,start_time,end_time,quantity,purpose,user_id,profile:profiles!bookings_user_profile_fk(full_name)")
+        .eq("equipment_id", id)
+        .eq("booking_date", date)
+        .eq("status", "booked")
+        .order("start_time", { ascending: true })
+        .limit(10);
+      if (error) throw error;
+      return (data ?? []) as Array<{
+        id: string;
+        start_time: string;
+        end_time: string;
+        quantity: number;
+        purpose: string;
+        user_id: string;
+        profile?: { full_name?: string | null } | null;
+      }>;
+    },
+  });
+
   const book = useMutation({
     mutationFn: (input: {
       equipment_id: string;
@@ -61,8 +88,10 @@ function EquipmentDetailPage() {
     onSuccess: () => {
       toast.success("Booking created");
       setPurpose("");
+      setValidationError(null);
       qc.invalidateQueries({ queryKey: ["schedule", id] });
       qc.invalidateQueries({ queryKey: ["avail", id] });
+      qc.invalidateQueries({ queryKey: ["availability-preview", id] });
     },
     onError: (e: Error) => {
       const map: Record<string, string> = {
@@ -81,6 +110,9 @@ function EquipmentDetailPage() {
 
   const e = equipment.data;
   const nextAvailableSlot = computeNextAvailable(schedule.data ?? [], e.total_quantity);
+  const timeValidation = validateBookingTimeRange({ startTime, endTime });
+  const preview = getAvailabilityPreview(availabilityPreview.data ?? [], startTime, endTime);
+  const canSubmit = Boolean(purpose.trim()) && timeValidation.isValid && (availability.data ?? 0) >= quantity && e.status === "active";
 
   return (
     <div className="space-y-6">
@@ -117,18 +149,42 @@ function EquipmentDetailPage() {
             </div>
             <div><Label>Quantity</Label><Input type="number" min={1} max={e.total_quantity} value={quantity} onChange={(ev) => setQuantity(parseInt(ev.target.value || "1", 10))} /></div>
             <div><Label>Purpose</Label><Textarea rows={2} required value={purpose} onChange={(ev) => setPurpose(ev.target.value)} placeholder="e.g. Sample preparation" /></div>
+            <div className="rounded-md border border-border/60 bg-muted/30 p-3 text-sm">
+              <div className="font-medium">{e.name}</div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                {preview.isAvailable
+                  ? "● Available now"
+                  : `● Currently in use · Available at ${preview.nextAvailableLabel}`}
+              </div>
+              {preview.currentBooking && (
+                <div className="mt-2 text-xs text-muted-foreground">
+                  <div>Booked by: {preview.currentBooking.profile?.full_name ?? "—"}</div>
+                  <div>Ends: {preview.currentBooking.end_time.slice(0, 5)}</div>
+                </div>
+              )}
+            </div>
             <div className="text-xs text-muted-foreground">Available for selected slot: <span className="font-medium text-foreground">{availability.data ?? "—"}</span></div>
+            {!timeValidation.isValid && <div className="text-xs text-destructive">{timeValidation.error}</div>}
+            {validationError && <div className="text-xs text-destructive">{validationError}</div>}
             <Button
               className="w-full"
-              onClick={() => book.mutate({
-                equipment_id: id,
-                booking_date: date,
-                start_time: startTime,
-                end_time: endTime,
-                quantity,
-                purpose,
-              })}
-              disabled={book.isPending || e.status !== "active" || !purpose || (availability.data ?? 0) < quantity}
+              onClick={() => {
+                const validationResult = validateBookingTimeRange({ startTime, endTime });
+                if (!validationResult.isValid) {
+                  setValidationError(validationResult.error ?? null);
+                  return;
+                }
+                setValidationError(null);
+                book.mutate({
+                  equipment_id: id,
+                  booking_date: date,
+                  start_time: startTime,
+                  end_time: endTime,
+                  quantity,
+                  purpose,
+                });
+              }}
+              disabled={book.isPending || !canSubmit}
             >
               Create booking
             </Button>
@@ -172,6 +228,41 @@ function EquipmentDetailPage() {
 
 function Info({ label, children, className = "" }: { label: string; children: React.ReactNode; className?: string }) {
   return <div className={className}><div className="text-xs uppercase tracking-wider text-muted-foreground">{label}</div><div className="mt-0.5">{children}</div></div>;
+}
+
+function getAvailabilityPreview(
+  bookings: Array<{ start_time: string; end_time: string; profile?: { full_name?: string | null } | null }>,
+  selectedStartTime: string,
+  selectedEndTime: string,
+) {
+  const now = new Date();
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const selectedStartMinutes = toMinutes(selectedStartTime);
+  const selectedEndMinutes = toMinutes(selectedEndTime);
+  const activeBooking = bookings.find((booking) => {
+    const startMinutes = toMinutes(booking.start_time);
+    const endMinutes = toMinutes(booking.end_time);
+    return startMinutes <= nowMinutes && nowMinutes < endMinutes;
+  });
+
+  if (!activeBooking) {
+    return {
+      isAvailable: true,
+      nextAvailableLabel: "Available now",
+      currentBooking: null,
+    };
+  }
+
+  const nextFutureBooking = [...bookings]
+    .filter((booking) => toMinutes(booking.end_time) > nowMinutes)
+    .sort((a, b) => toMinutes(a.start_time) - toMinutes(b.start_time))[0];
+
+  return {
+    isAvailable: false,
+    nextAvailableLabel: nextFutureBooking?.end_time?.slice(0, 5) ?? activeBooking.end_time.slice(0, 5),
+    currentBooking: activeBooking,
+    selectedSlotIsAvailable: selectedStartMinutes >= nowMinutes && selectedEndMinutes <= toMinutes(activeBooking.end_time),
+  };
 }
 
 function computeNextAvailable(schedule: { start_time: string; end_time: string; quantity: number }[], _total: number): string {

@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { logAudit } from "./audit";
+import { validateBookingTimeRange } from "./booking-validation";
 
 export interface BookingInput {
   equipment_id: string;
@@ -11,6 +12,15 @@ export interface BookingInput {
 }
 
 export async function createBooking(input: BookingInput) {
+  const timeValidation = validateBookingTimeRange({
+    startTime: input.start_time,
+    endTime: input.end_time,
+  });
+
+  if (!timeValidation.isValid || !timeValidation.startMinutes || !timeValidation.endMinutes) {
+    throw new Error("invalid_time_range");
+  }
+
   const { data, error } = await supabase.rpc("create_booking", {
     _equipment_id: input.equipment_id,
     _booking_date: input.booking_date,
@@ -29,8 +39,9 @@ export async function listBookings(opts: {
   from?: string; to?: string;
   equipmentId?: string;
   limit?: number; offset?: number;
+  managerDepartment?: string | null;
 } = {}) {
-  const { scope = "all", status, from, to, equipmentId, limit = 50, offset = 0 } = opts;
+  const { scope = "all", status, from, to, equipmentId, limit = 50, offset = 0, managerDepartment } = opts;
   let q = supabase.from("bookings").select(
     "*, equipment:equipment_id(name,equipment_code,category), profile:profiles!bookings_user_profile_fk(full_name,employee_id,department)",
     { count: "exact" },
@@ -39,6 +50,12 @@ export async function listBookings(opts: {
   if (scope === "mine") {
     const { data } = await supabase.auth.getUser();
     if (data.user) q = q.eq("user_id", data.user.id);
+  } else if (managerDepartment) {
+    const { data: departmentProfiles, error: profileError } = await supabase.from("profiles").select("id").eq("department", managerDepartment);
+    if (profileError) throw profileError;
+    const userIds = (departmentProfiles ?? []).map((p) => p.id);
+    if (userIds.length === 0) return { rows: [], total: 0 };
+    q = q.in("user_id", userIds);
   }
   if (status) q = q.eq("status", status as never);
   if (from) q = q.gte("booking_date", from);

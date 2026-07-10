@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getSupabaseEnvVar } from "@/integrations/supabase/env";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
+import { validateBookingTimeRange } from "./booking-validation";
 
 const bookingInputSchema = z.object({
   equipment_id: z.string().uuid(),
@@ -42,6 +43,21 @@ export const createBookingServerFn = createServerFn({ method: "POST" })
 
     if (userError || !userId) {
       throw new Error(userError?.message ?? "Unable to resolve the authenticated user");
+    }
+
+    const timeValidation = validateBookingTimeRange({
+      startTime: data.start_time,
+      endTime: data.end_time,
+    });
+
+    if (!timeValidation.isValid || !timeValidation.startMinutes || !timeValidation.endMinutes) {
+      throw new Error("invalid_time_range");
+    }
+
+    const labStartMinutes = 8 * 60;
+    const labEndMinutes = 20 * 60;
+    if (timeValidation.startMinutes < labStartMinutes || timeValidation.endMinutes > labEndMinutes) {
+      throw new Error("outside_lab_hours");
     }
 
     const payload = {

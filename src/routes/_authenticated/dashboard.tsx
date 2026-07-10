@@ -68,6 +68,67 @@ function DashboardPage() {
     },
   });
 
+  const departmentStats = useQuery({
+    queryKey: ["department-stats", role, user?.department, today],
+    enabled: !!user && (role === "manager" || role === "admin"),
+    queryFn: async () => {
+      let relevantUserIds: string[] | null = null;
+      if (role === "manager" && user?.department) {
+        const { data: departmentProfiles } = await supabase.from("profiles").select("id").eq("department", user.department);
+        relevantUserIds = (departmentProfiles ?? []).map((p) => p.id);
+        if (!relevantUserIds.length) {
+          return {
+            totalBookings: 0,
+            activeBookings: 0,
+            upcomingBookings: 0,
+            completedBookings: 0,
+            cancelledBookings: 0,
+            utilizationPercent: 0,
+            currentlyInUse: 0,
+            available: 0,
+            upcoming: [] as Array<{ id: string; equipment_name: string; booking_date: string; start_time: string; end_time: string; purpose: string }>,
+          };
+        }
+      }
+
+      let q = supabase.from("bookings").select("id,status,booking_date,start_time,end_time,quantity,purpose,equipment:equipment_id(name)", { count: "exact" });
+      if (relevantUserIds) q = q.in("user_id", relevantUserIds);
+      const { data, error } = await q.order("booking_date", { ascending: true }).order("start_time", { ascending: true });
+      if (error) throw error;
+
+      const rows = data ?? [];
+      const now = new Date();
+      const nowMinutes = now.getHours() * 60 + now.getMinutes();
+      const activeRows = rows.filter((row) => row.status === "booked" && row.booking_date === today);
+      const currentInUse = activeRows.filter((row) => {
+        const startMinutes = Number(row.start_time.slice(0, 2)) * 60 + Number(row.start_time.slice(3, 5));
+        const endMinutes = Number(row.end_time.slice(0, 2)) * 60 + Number(row.end_time.slice(3, 5));
+        return startMinutes <= nowMinutes && nowMinutes < endMinutes;
+      }).length;
+      const upcomingRows = rows.filter((row) => row.status === "booked" && row.booking_date >= today).slice(0, 5);
+      const totalEquipmentUnits = (await supabase.from("equipment").select("total_quantity", { count: "exact" })).data?.reduce((sum, row) => sum + (row.total_quantity ?? 0), 0) ?? 0;
+
+      return {
+        totalBookings: rows.length,
+        activeBookings: activeRows.length,
+        upcomingBookings: upcomingRows.length,
+        completedBookings: rows.filter((row) => row.status === "returned").length,
+        cancelledBookings: rows.filter((row) => row.status === "cancelled").length,
+        utilizationPercent: totalEquipmentUnits > 0 ? Math.round((activeRows.length / totalEquipmentUnits) * 100) : 0,
+        currentlyInUse: currentInUse,
+        available: Math.max(0, totalEquipmentUnits - currentInUse),
+        upcoming: upcomingRows.map((row) => ({
+          id: row.id,
+          equipment_name: row.equipment?.name ?? "Equipment",
+          booking_date: row.booking_date,
+          start_time: row.start_time,
+          end_time: row.end_time,
+          purpose: row.purpose ?? "",
+        })),
+      };
+    },
+  });
+
   const recentActivity = useQuery({
     queryKey: ["recent-activity"],
     enabled: role === "admin" || role === "manager",
@@ -111,6 +172,54 @@ function DashboardPage() {
           ? <StatCard title="My Upcoming" value={stats.data?.myUpcoming.length ?? 0} icon={Clock} />
           : <StatCard title="Total Users" value={stats.data?.users ?? "—"} icon={Users} />}
       </div>
+
+      {(role === "manager" || role === "admin") && departmentStats.data && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card>
+            <CardHeader><CardTitle className="text-sm font-semibold">Department booking overview</CardTitle></CardHeader>
+            <CardContent className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-md border p-3"><div className="text-xs uppercase tracking-wider text-muted-foreground">Total bookings</div><div className="mt-2 text-xl font-semibold">{departmentStats.data.totalBookings}</div></div>
+              <div className="rounded-md border p-3"><div className="text-xs uppercase tracking-wider text-muted-foreground">Active</div><div className="mt-2 text-xl font-semibold">{departmentStats.data.activeBookings}</div></div>
+              <div className="rounded-md border p-3"><div className="text-xs uppercase tracking-wider text-muted-foreground">Upcoming</div><div className="mt-2 text-xl font-semibold">{departmentStats.data.upcomingBookings}</div></div>
+              <div className="rounded-md border p-3"><div className="text-xs uppercase tracking-wider text-muted-foreground">Completed</div><div className="mt-2 text-xl font-semibold">{departmentStats.data.completedBookings}</div></div>
+              <div className="rounded-md border p-3"><div className="text-xs uppercase tracking-wider text-muted-foreground">Cancelled</div><div className="mt-2 text-xl font-semibold">{departmentStats.data.cancelledBookings}</div></div>
+              <div className="rounded-md border p-3"><div className="text-xs uppercase tracking-wider text-muted-foreground">Utilization</div><div className="mt-2 text-xl font-semibold">{departmentStats.data.utilizationPercent}%</div></div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader><CardTitle className="text-sm font-semibold">Equipment status</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-center justify-between rounded-md border p-3">
+                <div>
+                  <div className="text-sm font-medium">Currently in use</div>
+                  <div className="text-xs text-muted-foreground">Active reservations right now</div>
+                </div>
+                <div className="text-xl font-semibold">{departmentStats.data.currentlyInUse}</div>
+              </div>
+              <div className="flex items-center justify-between rounded-md border p-3">
+                <div>
+                  <div className="text-sm font-medium">Currently available</div>
+                  <div className="text-xs text-muted-foreground">Units ready for booking</div>
+                </div>
+                <div className="text-xl font-semibold">{departmentStats.data.available}</div>
+              </div>
+              <div className="rounded-md border p-3">
+                <div className="text-xs uppercase tracking-wider text-muted-foreground">Upcoming department bookings</div>
+                <ul className="mt-2 space-y-2 text-sm">
+                  {(departmentStats.data.upcoming ?? []).length === 0
+                    ? <li className="text-muted-foreground">No upcoming bookings.</li>
+                    : departmentStats.data.upcoming.map((booking) => (
+                      <li key={booking.id} className="flex items-center justify-between gap-2">
+                        <span>{booking.equipment_name}</span>
+                        <span className="text-xs text-muted-foreground">{format(new Date(booking.booking_date), "d MMM")} · {booking.start_time.slice(0,5)}–{booking.end_time.slice(0,5)}</span>
+                      </li>
+                    ))}
+                </ul>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {role !== "employee" && (
         <div className="grid gap-4 lg:grid-cols-3">
