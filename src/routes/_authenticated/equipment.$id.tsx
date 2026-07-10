@@ -34,7 +34,7 @@ function EquipmentDetailPage() {
   const [quantity, setQuantity] = useState(1);
   const [purpose, setPurpose] = useState("");
 
-  const createBookingMutation = useServerFn(createBookingServerFn);
+  const submitBooking = useServerFn(createBookingServerFn);
   const equipment = useQuery({ queryKey: ["equipment", id], queryFn: () => getEquipment(id) });
   const schedule = useQuery({ queryKey: ["schedule", id, date], queryFn: () => equipmentDaySchedule(id, date) });
   const availability = useQuery({
@@ -50,14 +50,14 @@ function EquipmentDetailPage() {
   });
 
   const book = useMutation({
-    mutationFn: () => createBookingMutation.mutateAsync({
-      equipment_id: id,
-      booking_date: date,
-      start_time: startTime,
-      end_time: endTime,
-      quantity,
-      purpose,
-    }),
+    mutationFn: (input: {
+      equipment_id: string;
+      booking_date: string;
+      start_time: string;
+      end_time: string;
+      quantity: number;
+      purpose: string;
+    }) => submitBooking({ data: input }),
     onSuccess: () => {
       toast.success("Booking created");
       setPurpose("");
@@ -118,7 +118,20 @@ function EquipmentDetailPage() {
             <div><Label>Quantity</Label><Input type="number" min={1} max={e.total_quantity} value={quantity} onChange={(ev) => setQuantity(parseInt(ev.target.value || "1", 10))} /></div>
             <div><Label>Purpose</Label><Textarea rows={2} required value={purpose} onChange={(ev) => setPurpose(ev.target.value)} placeholder="e.g. Sample preparation" /></div>
             <div className="text-xs text-muted-foreground">Available for selected slot: <span className="font-medium text-foreground">{availability.data ?? "—"}</span></div>
-            <Button className="w-full" onClick={() => book.mutate()} disabled={book.isPending || e.status !== "active" || !purpose || (availability.data ?? 0) < quantity}>Create booking</Button>
+            <Button
+              className="w-full"
+              onClick={() => book.mutate({
+                equipment_id: id,
+                booking_date: date,
+                start_time: startTime,
+                end_time: endTime,
+                quantity,
+                purpose,
+              })}
+              disabled={book.isPending || e.status !== "active" || !purpose || (availability.data ?? 0) < quantity}
+            >
+              Create booking
+            </Button>
             <div className="text-[11px] text-muted-foreground">Lab hours: 08:00 – 20:00</div>
           </CardContent>
         </Card>
