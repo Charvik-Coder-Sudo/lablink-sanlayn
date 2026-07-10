@@ -19,7 +19,7 @@ async function getServerEntry(): Promise<ServerEntry> {
 }
 
 // h3 swallows in-handler throws into a normal 500 Response with body
-// {"unhandled":true,"message":"HTTPError"} — try/catch alone never fires for those.
+// {\"unhandled\":true,\"message\":\"HTTPError\"} — try/catch alone never fires for those.
 async function normalizeCatastrophicSsrResponse(response: Response): Promise<Response> {
   if (response.status < 500) return response;
   const contentType = response.headers.get("content-type") ?? "";
@@ -46,6 +46,20 @@ function isH3SwallowedErrorBody(body: string): boolean {
 
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
+    // Cloudflare Workers / Nitro: copy all env bindings into process.env FIRST,
+    // before any Supabase client initializes.
+    if (env && typeof env === "object") {
+      if (typeof process === "undefined") {
+        (globalThis as any).process = { env: {} };
+      } else if (!process.env) {
+        process.env = {};
+      }
+      for (const [key, value] of Object.entries(env)) {
+        if (value && typeof value === "string") {
+          process.env[key] = value;
+        }
+      }
+    }
     try {
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);

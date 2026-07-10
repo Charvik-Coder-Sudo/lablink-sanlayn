@@ -1,7 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { getEquipment } from "@/lib/equipment";
 import { createBooking, equipmentDaySchedule } from "@/lib/bookings";
+import { createBookingServerFn } from "@/lib/bookings.server";
 import { supabase } from "@/integrations/supabase/client";
 import { useState } from "react";
 import { format } from "date-fns";
@@ -32,6 +34,7 @@ function EquipmentDetailPage() {
   const [quantity, setQuantity] = useState(1);
   const [purpose, setPurpose] = useState("");
 
+  const createBookingMutation = useServerFn(createBookingServerFn);
   const equipment = useQuery({ queryKey: ["equipment", id], queryFn: () => getEquipment(id) });
   const schedule = useQuery({ queryKey: ["schedule", id, date], queryFn: () => equipmentDaySchedule(id, date) });
   const availability = useQuery({
@@ -47,7 +50,14 @@ function EquipmentDetailPage() {
   });
 
   const book = useMutation({
-    mutationFn: () => createBooking({ equipment_id: id, booking_date: date, start_time: startTime, end_time: endTime, quantity, purpose }),
+    mutationFn: () => createBookingMutation.mutateAsync({
+      equipment_id: id,
+      booking_date: date,
+      start_time: startTime,
+      end_time: endTime,
+      quantity,
+      purpose,
+    }),
     onSuccess: () => {
       toast.success("Booking created");
       setPurpose("");

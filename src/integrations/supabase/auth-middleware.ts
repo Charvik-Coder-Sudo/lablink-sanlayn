@@ -3,8 +3,7 @@ import { createMiddleware } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
 import { createClient } from '@supabase/supabase-js'
 import type { Database } from './types'
-
-
+import { getSupabaseEnvVar } from './env'
 
 function isNewSupabaseApiKey(value: string): boolean {
   return value.startsWith('sb_publishable_') || value.startsWith('sb_secret_');
@@ -33,6 +32,7 @@ function createSupabaseFetch(supabaseKey: string): typeof fetch {
 export const requireSupabaseAuth = createMiddleware({ type: 'function' }).server(
   async ({ next }) => {
     
+<<<<<<< HEAD
     // Support both NEXT_PUBLIC_* and unprefixed environment variables
     const SUPABASE_URL =
       process.env.NEXT_PUBLIC_SUPABASE_URL ||
@@ -40,13 +40,18 @@ export const requireSupabaseAuth = createMiddleware({ type: 'function' }).server
     const SUPABASE_PUBLISHABLE_KEY =
       process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
       process.env.SUPABASE_PUBLISHABLE_KEY;
+=======
+    const SUPABASE_URL = getSupabaseEnvVar('SUPABASE_URL');
+    const SUPABASE_PUBLISHABLE_KEY = getSupabaseEnvVar('SUPABASE_PUBLISHABLE_KEY');
+>>>>>>> ad9984d (Second commit)
 
     if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
       const missing = [
         ...(!SUPABASE_URL ? ['SUPABASE_URL'] : []),
         ...(!SUPABASE_PUBLISHABLE_KEY ? ['SUPABASE_PUBLISHABLE_KEY'] : []),
       ];
-      const message = `Missing Supabase environment variable(s): ${missing.join(', ')}. Connect Supabase in Lovable Cloud.`;
+      const message = `Missing Supabase environment variable(s): ${missing.join(', ')}. ` +
+        `Add VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY to .env.local`;
       console.error(`[Supabase] ${message}`);
       throw new Error(message);
     }
