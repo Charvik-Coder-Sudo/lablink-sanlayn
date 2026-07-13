@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { listEquipment, createEquipment, updateEquipment, deleteEquipment, type EquipmentInput } from "@/lib/equipment";
+import { fetchAvailabilityMap, type EquipmentAvailability } from "@/lib/availability";
 import { useSessionUser } from "@/lib/use-session";
 import { isPrivileged } from "@/lib/session";
 import { Button } from "@/components/ui/button";
