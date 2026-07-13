@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { listEquipment, createEquipment, updateEquipment, deleteEquipment, type EquipmentInput } from "@/lib/equipment";
+import { fetchAvailabilityMap, type EquipmentAvailability } from "@/lib/availability";
 import { useSessionUser } from "@/lib/use-session";
 import { isPrivileged } from "@/lib/session";
 import { Button } from "@/components/ui/button";
@@ -49,6 +50,14 @@ function EquipmentListPage() {
 
   const totalPages = Math.max(1, Math.ceil((query.data?.total ?? 0) / PAGE));
 
+  const rows = query.data?.rows ?? [];
+  const availabilityQuery = useQuery({
+    queryKey: ["equipment-availability", rows.map((r) => r.id).join(",")],
+    queryFn: () => fetchAvailabilityMap(rows.map((r) => ({ id: r.id, total_quantity: r.total_quantity }))),
+    enabled: rows.length > 0,
+    refetchInterval: 60_000,
+  });
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between flex-wrap gap-2">
@@ -90,11 +99,13 @@ function EquipmentListPage() {
         <div className="text-center text-sm text-muted-foreground py-10">No equipment matches your filters.</div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {query.data!.rows.map((e) => (
+          {query.data!.rows.map((e) => {
+            const avail = availabilityQuery.data?.get(e.id);
+            return (
             <Card key={e.id} className="hover:shadow-elevated transition-shadow">
               <CardContent className="p-5 space-y-3">
                 <div className="flex items-start justify-between gap-2">
-                  <div>
+                  <div className="min-w-0">
                     <div className="text-xs font-mono text-muted-foreground">{e.equipment_code}</div>
                     <Link to="/equipment/$id" params={{ id: e.id }} className="font-semibold hover:text-primary">
                       {e.name}
@@ -107,18 +118,24 @@ function EquipmentListPage() {
                   <div><span className="font-medium text-foreground">Location:</span> {e.lab_location}</div>
                   {e.manufacturer && <div><span className="font-medium text-foreground">Mfr:</span> {e.manufacturer} {e.model}</div>}
                 </div>
+                <AvailabilityBlock avail={avail} loading={availabilityQuery.isLoading} equipmentStatus={e.status} />
                 <div className="flex items-center justify-between pt-2 border-t">
                   <div className="text-sm">Qty: <span className="font-semibold">{e.total_quantity}</span></div>
                   <div className="flex gap-1">
-                    <Link to="/equipment/$id" params={{ id: e.id }}>
-                      <Button size="sm" variant="outline">Book</Button>
-                    </Link>
+                    {avail && !avail.canBook ? (
+                      <Button size="sm" variant="outline" disabled title="Currently unavailable">Book</Button>
+                    ) : (
+                      <Link to="/equipment/$id" params={{ id: e.id }}>
+                        <Button size="sm" variant="outline" disabled={e.status !== "active"}>Book</Button>
+                      </Link>
+                    )}
                     {canManage && <EquipmentRowActions equipment={e} onDone={() => qc.invalidateQueries({ queryKey: ["equipment-list"] })} />}
                   </div>
                 </div>
               </CardContent>
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -129,6 +146,47 @@ function EquipmentListPage() {
           <Button variant="outline" size="sm" disabled={page + 1 >= totalPages} onClick={() => setPage((p) => p + 1)}><ChevronRight className="h-4 w-4" /></Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function AvailabilityBlock({ avail, loading, equipmentStatus }: { avail?: EquipmentAvailability; loading: boolean; equipmentStatus: string }) {
+  if (equipmentStatus !== "active") {
+    return (
+      <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+        Not bookable ({equipmentStatus})
+      </div>
+    );
+  }
+  if (loading || !avail) {
+    return <div className="rounded-md border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">Checking availability…</div>;
+  }
+  const styles = {
+    available: { dot: "bg-emerald-500", bg: "bg-emerald-500/10", border: "border-emerald-500/30", text: "text-emerald-700 dark:text-emerald-400", icon: "🟢" },
+    booked:    { dot: "bg-red-500",     bg: "bg-red-500/10",     border: "border-red-500/30",     text: "text-red-700 dark:text-red-400",         icon: "🔴" },
+    reserved:  { dot: "bg-amber-500",   bg: "bg-amber-500/10",   border: "border-amber-500/30",   text: "text-amber-700 dark:text-amber-500",     icon: "🟡" },
+  }[avail.status];
+  return (
+    <div className={`rounded-md border ${styles.border} ${styles.bg} px-3 py-2 space-y-1`}>
+      <div className={`flex items-center gap-2 text-xs font-semibold ${styles.text}`}>
+        <span className={`h-2 w-2 rounded-full ${styles.dot}`} />
+        <span>{styles.icon} {avail.label}</span>
+      </div>
+      {avail.status === "booked" && (
+        <div className="text-[11px] leading-tight text-muted-foreground space-y-0.5">
+          <div><span className="font-medium text-foreground">Booked by:</span> {avail.bookedBy}{avail.department ? ` (${avail.department})` : ""}</div>
+          {avail.availableAt && <div><span className="font-medium text-foreground">Available at:</span> {avail.availableAt}</div>}
+        </div>
+      )}
+      {avail.status === "reserved" && (
+        <div className="text-[11px] leading-tight text-muted-foreground space-y-0.5">
+          {avail.reservedFrom && <div><span className="font-medium text-foreground">Reserved from:</span> {avail.reservedFrom}</div>}
+          {avail.bookedBy && <div><span className="font-medium text-foreground">By:</span> {avail.bookedBy}{avail.department ? ` (${avail.department})` : ""}</div>}
+        </div>
+      )}
+      {avail.status === "available" && avail.totalQty > 1 && (
+        <div className="text-[11px] text-muted-foreground">{avail.totalQty - avail.activeQty} of {avail.totalQty} units free</div>
+      )}
     </div>
   );
 }
