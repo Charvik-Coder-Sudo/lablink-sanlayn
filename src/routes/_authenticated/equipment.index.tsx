@@ -150,6 +150,47 @@ function EquipmentListPage() {
   );
 }
 
+function AvailabilityBlock({ avail, loading, equipmentStatus }: { avail?: EquipmentAvailability; loading: boolean; equipmentStatus: string }) {
+  if (equipmentStatus !== "active") {
+    return (
+      <div className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+        Not bookable ({equipmentStatus})
+      </div>
+    );
+  }
+  if (loading || !avail) {
+    return <div className="rounded-md border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">Checking availability…</div>;
+  }
+  const styles = {
+    available: { dot: "bg-emerald-500", bg: "bg-emerald-500/10", border: "border-emerald-500/30", text: "text-emerald-700 dark:text-emerald-400", icon: "🟢" },
+    booked:    { dot: "bg-red-500",     bg: "bg-red-500/10",     border: "border-red-500/30",     text: "text-red-700 dark:text-red-400",         icon: "🔴" },
+    reserved:  { dot: "bg-amber-500",   bg: "bg-amber-500/10",   border: "border-amber-500/30",   text: "text-amber-700 dark:text-amber-500",     icon: "🟡" },
+  }[avail.status];
+  return (
+    <div className={`rounded-md border ${styles.border} ${styles.bg} px-3 py-2 space-y-1`}>
+      <div className={`flex items-center gap-2 text-xs font-semibold ${styles.text}`}>
+        <span className={`h-2 w-2 rounded-full ${styles.dot}`} />
+        <span>{styles.icon} {avail.label}</span>
+      </div>
+      {avail.status === "booked" && (
+        <div className="text-[11px] leading-tight text-muted-foreground space-y-0.5">
+          <div><span className="font-medium text-foreground">Booked by:</span> {avail.bookedBy}{avail.department ? ` (${avail.department})` : ""}</div>
+          {avail.availableAt && <div><span className="font-medium text-foreground">Available at:</span> {avail.availableAt}</div>}
+        </div>
+      )}
+      {avail.status === "reserved" && (
+        <div className="text-[11px] leading-tight text-muted-foreground space-y-0.5">
+          {avail.reservedFrom && <div><span className="font-medium text-foreground">Reserved from:</span> {avail.reservedFrom}</div>}
+          {avail.bookedBy && <div><span className="font-medium text-foreground">By:</span> {avail.bookedBy}{avail.department ? ` (${avail.department})` : ""}</div>}
+        </div>
+      )}
+      {avail.status === "available" && avail.totalQty > 1 && (
+        <div className="text-[11px] text-muted-foreground">{avail.totalQty - avail.activeQty} of {avail.totalQty} units free</div>
+      )}
+    </div>
+  );
+}
+
 function emptyEq(): EquipmentInput {
   return { equipment_code: "", name: "", category: "", manufacturer: "", model: "", serial_number: "", lab_location: "", total_quantity: 1, remarks: "", status: "active" };
 }
