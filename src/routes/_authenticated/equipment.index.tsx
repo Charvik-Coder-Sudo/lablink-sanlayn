@@ -99,11 +99,13 @@ function EquipmentListPage() {
         <div className="text-center text-sm text-muted-foreground py-10">No equipment matches your filters.</div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {query.data!.rows.map((e) => (
+          {query.data!.rows.map((e) => {
+            const avail = availabilityQuery.data?.get(e.id);
+            return (
             <Card key={e.id} className="hover:shadow-elevated transition-shadow">
               <CardContent className="p-5 space-y-3">
                 <div className="flex items-start justify-between gap-2">
-                  <div>
+                  <div className="min-w-0">
                     <div className="text-xs font-mono text-muted-foreground">{e.equipment_code}</div>
                     <Link to="/equipment/$id" params={{ id: e.id }} className="font-semibold hover:text-primary">
                       {e.name}
@@ -116,18 +118,24 @@ function EquipmentListPage() {
                   <div><span className="font-medium text-foreground">Location:</span> {e.lab_location}</div>
                   {e.manufacturer && <div><span className="font-medium text-foreground">Mfr:</span> {e.manufacturer} {e.model}</div>}
                 </div>
+                <AvailabilityBlock avail={avail} loading={availabilityQuery.isLoading} equipmentStatus={e.status} />
                 <div className="flex items-center justify-between pt-2 border-t">
                   <div className="text-sm">Qty: <span className="font-semibold">{e.total_quantity}</span></div>
                   <div className="flex gap-1">
-                    <Link to="/equipment/$id" params={{ id: e.id }}>
-                      <Button size="sm" variant="outline">Book</Button>
-                    </Link>
+                    {avail && !avail.canBook ? (
+                      <Button size="sm" variant="outline" disabled title="Currently unavailable">Book</Button>
+                    ) : (
+                      <Link to="/equipment/$id" params={{ id: e.id }}>
+                        <Button size="sm" variant="outline" disabled={e.status !== "active"}>Book</Button>
+                      </Link>
+                    )}
                     {canManage && <EquipmentRowActions equipment={e} onDone={() => qc.invalidateQueries({ queryKey: ["equipment-list"] })} />}
                   </div>
                 </div>
               </CardContent>
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
 
