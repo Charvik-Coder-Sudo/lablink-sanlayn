@@ -50,6 +50,14 @@ function EquipmentListPage() {
 
   const totalPages = Math.max(1, Math.ceil((query.data?.total ?? 0) / PAGE));
 
+  const rows = query.data?.rows ?? [];
+  const availabilityQuery = useQuery({
+    queryKey: ["equipment-availability", rows.map((r) => r.id).join(",")],
+    queryFn: () => fetchAvailabilityMap(rows.map((r) => ({ id: r.id, total_quantity: r.total_quantity }))),
+    enabled: rows.length > 0,
+    refetchInterval: 60_000,
+  });
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between flex-wrap gap-2">
