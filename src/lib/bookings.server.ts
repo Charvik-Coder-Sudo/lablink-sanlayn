@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { getRequest } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { getSupabaseEnvVar } from "@/integrations/supabase/env";
 import { createClient } from "@supabase/supabase-js";
@@ -17,8 +18,9 @@ const bookingInputSchema = z.object({
 
 export const createBookingServerFn = createServerFn({ method: "POST" })
   .validator(bookingInputSchema)
-  .handler(async ({ data, request }) => {
-    const authHeader = request.headers.get("authorization");
+  .handler(async ({ data }) => {
+    const request = getRequest();
+    const authHeader = request?.headers.get("authorization");
     const token = authHeader?.replace(/^Bearer\s+/i, "").trim();
 
     if (!token) {
