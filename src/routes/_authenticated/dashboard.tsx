@@ -46,7 +46,7 @@ function DashboardPage() {
       const [eqTotal, eqActive, todayBookings, todayReturns, users, myUpcoming, categoryStats] = await Promise.all([
         supabase.from("equipment").select("total_quantity", { count: "exact", head: false }),
         supabase.from("equipment").select("id", { count: "exact", head: true }).eq("status", "active"),
-        supabase.from("bookings").select("id", { count: "exact", head: true }).eq("booking_date", today).eq("status", "booked"),
+        supabase.from("bookings").select("id", { count: "exact", head: true }).lte("booking_date", today).gte("end_date", today).eq("status", "booked"),
         supabase.from("bookings").select("id", { count: "exact", head: true }).eq("status", "returned").gte("returned_at", `${today}T00:00:00`),
         supabase.from("profiles").select("id", { count: "exact", head: true }),
         supabase.from("bookings").select("*, equipment:equipment_id(name)")
@@ -91,19 +91,18 @@ function DashboardPage() {
         }
       }
 
-      let q = supabase.from("bookings").select("id,status,booking_date,start_time,end_time,quantity,purpose,equipment:equipment_id(name)", { count: "exact" });
+      let q = supabase.from("bookings").select("id,status,booking_date,end_date,start_time,end_time,quantity,purpose,equipment:equipment_id(name)", { count: "exact" });
       if (relevantUserIds) q = q.in("user_id", relevantUserIds);
       const { data, error } = await q.order("booking_date", { ascending: true }).order("start_time", { ascending: true });
       if (error) throw error;
 
       const rows = data ?? [];
       const now = new Date();
-      const nowMinutes = now.getHours() * 60 + now.getMinutes();
-      const activeRows = rows.filter((row) => row.status === "booked" && row.booking_date === today);
+      const activeRows = rows.filter((row) => row.status === "booked" && row.booking_date <= today && row.end_date >= today);
       const currentInUse = activeRows.filter((row) => {
-        const startMinutes = Number(row.start_time.slice(0, 2)) * 60 + Number(row.start_time.slice(3, 5));
-        const endMinutes = Number(row.end_time.slice(0, 2)) * 60 + Number(row.end_time.slice(3, 5));
-        return startMinutes <= nowMinutes && nowMinutes < endMinutes;
+        const start = new Date(`${row.booking_date}T${row.start_time}`);
+        const end = new Date(`${row.end_date}T${row.end_time}`);
+        return start <= now && now < end;
       }).length;
       const upcomingRows = rows.filter((row) => row.status === "booked" && row.booking_date >= today).slice(0, 5);
       const totalEquipmentUnits = (await supabase.from("equipment").select("total_quantity", { count: "exact" })).data?.reduce((sum, row) => sum + (row.total_quantity ?? 0), 0) ?? 0;

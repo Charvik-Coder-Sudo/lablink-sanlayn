@@ -1,10 +1,11 @@
 import { supabase } from "@/integrations/supabase/client";
 import { logAudit } from "./audit";
-import { validateBookingTimeRange } from "./booking-validation";
+import { validateBookingDateTimeRange } from "./booking-validation";
 
 export interface BookingInput {
   equipment_id: string;
-  booking_date: string; // yyyy-mm-dd
+  booking_date: string; // yyyy-mm-dd (From Date)
+  end_date: string;     // yyyy-mm-dd (To Date)
   start_time: string;   // HH:mm
   end_time: string;
   quantity: number;
@@ -12,18 +13,21 @@ export interface BookingInput {
 }
 
 export async function createBooking(input: BookingInput) {
-  const timeValidation = validateBookingTimeRange({
+  const rangeValidation = validateBookingDateTimeRange({
+    fromDate: input.booking_date,
+    toDate: input.end_date,
     startTime: input.start_time,
     endTime: input.end_time,
   });
 
-  if (!timeValidation.isValid || !timeValidation.startMinutes || !timeValidation.endMinutes) {
-    throw new Error("invalid_time_range");
+  if (!rangeValidation.isValid) {
+    throw new Error(input.end_date < input.booking_date ? "invalid_date_range" : "invalid_time_range");
   }
 
   const { data, error } = await supabase.rpc("create_booking", {
     _equipment_id: input.equipment_id,
     _booking_date: input.booking_date,
+    _end_date: input.end_date,
     _start: input.start_time,
     _end: input.end_time,
     _quantity: input.quantity,
@@ -87,9 +91,10 @@ export async function markReturned(id: string) {
 export async function equipmentDaySchedule(equipmentId: string, date: string) {
   const { data, error } = await supabase
     .from("bookings")
-    .select("id,start_time,end_time,quantity,status,purpose,profile:profiles!bookings_user_profile_fk(full_name)")
+    .select("id,booking_date,end_date,start_time,end_time,quantity,status,purpose,profile:profiles!bookings_user_profile_fk(full_name)")
     .eq("equipment_id", equipmentId)
-    .eq("booking_date", date)
+    .lte("booking_date", date)
+    .gte("end_date", date)
     .eq("status", "booked")
     .order("start_time");
   if (error) throw error;

@@ -54,6 +54,7 @@ export type Database = {
           booking_date: string
           cancelled_at: string | null
           created_at: string
+          end_date: string
           end_time: string
           equipment_id: string
           id: string
@@ -70,6 +71,7 @@ export type Database = {
           booking_date: string
           cancelled_at?: string | null
           created_at?: string
+          end_date: string
           end_time: string
           equipment_id: string
           id?: string
@@ -86,6 +88,7 @@ export type Database = {
           booking_date?: string
           cancelled_at?: string | null
           created_at?: string
+          end_date?: string
           end_time?: string
           equipment_id?: string
           id?: string
@@ -245,6 +248,7 @@ export type Database = {
         Args: {
           _booking_date: string
           _end: string
+          _end_date: string
           _equipment_id: string
           _purpose: string
           _quantity: number
@@ -254,6 +258,7 @@ export type Database = {
           booking_date: string
           cancelled_at: string | null
           created_at: string
+          end_date: string
           end_time: string
           equipment_id: string
           id: string
@@ -279,10 +284,11 @@ export type Database = {
       }
       equipment_available_qty: {
         Args: {
-          _date: string
           _end: string
           _equipment_id: string
+          _from_date: string
           _start: string
+          _to_date: string
         }
         Returns: number
       }

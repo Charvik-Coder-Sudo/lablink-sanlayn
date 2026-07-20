@@ -126,7 +126,10 @@ function BookingsPage() {
                     <div className="text-xs text-muted-foreground">{b.profile?.department ?? ""}</div>
                   </td>
                   <td className="px-4 py-3">
-                    <div>{format(parseISO(b.booking_date), "d MMM yyyy")}</div>
+                    <div>
+                      {format(parseISO(b.booking_date), "d MMM yyyy")}
+                      {b.end_date !== b.booking_date && <> – {format(parseISO(b.end_date), "d MMM yyyy")}</>}
+                    </div>
                     <div className="text-xs text-muted-foreground">{b.start_time.slice(0,5)}–{b.end_time.slice(0,5)}</div>
                   </td>
                   <td className="px-4 py-3 text-right">{b.quantity}</td>

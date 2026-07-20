@@ -33,6 +33,47 @@ function parseTimeToMinutes(value: string): number | null {
   return hours * 60 + minutes;
 }
 
+export interface BookingDateTimeRangeInput {
+  fromDate: string; // yyyy-mm-dd
+  toDate: string; // yyyy-mm-dd
+  startTime: string;
+  endTime: string;
+}
+
+export interface BookingDateTimeRangeResult {
+  isValid: boolean;
+  error?: string;
+  startMinutes?: number;
+  endMinutes?: number;
+}
+
+/**
+ * Validates a booking's From/To date pair together with its Start/End time.
+ * Same-day bookings still require endTime > startTime; multi-day bookings only
+ * require toDate >= fromDate (the reservation runs continuously between the two moments).
+ */
+export function validateBookingDateTimeRange(input: BookingDateTimeRangeInput): BookingDateTimeRangeResult {
+  if (!input.fromDate || !input.toDate) {
+    return { isValid: false, error: "Please select both a From Date and a To Date." };
+  }
+  if (input.toDate < input.fromDate) {
+    return { isValid: false, error: "To Date must be on or after From Date." };
+  }
+
+  const startMinutes = parseTimeToMinutes(input.startTime);
+  const endMinutes = parseTimeToMinutes(input.endTime);
+  if (startMinutes === null || endMinutes === null) {
+    return { isValid: false, error: "Please enter a valid time." };
+  }
+
+  const sameDay = input.fromDate === input.toDate;
+  if (sameDay && endMinutes <= startMinutes) {
+    return { isValid: false, error: "End time must be after start time when booking a single day." };
+  }
+
+  return { isValid: true, startMinutes, endMinutes };
+}
+
 export function validateBookingTimeRange(input: { startTime: string; endTime: string }): BookingTimeValidationResult {
   const startMinutes = parseTimeToMinutes(input.startTime);
   const endMinutes = parseTimeToMinutes(input.endTime);

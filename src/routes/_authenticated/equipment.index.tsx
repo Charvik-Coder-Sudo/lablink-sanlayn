@@ -2,6 +2,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { listEquipment, createEquipment, updateEquipment, deleteEquipment, type EquipmentInput } from "@/lib/equipment";
+import { fetchEquipmentBookingSlots, computeEquipmentAvailability } from "@/lib/equipment-availability";
+import { EquipmentAvailabilityBadge } from "@/components/equipment-availability-badge";
 import { useSessionUser } from "@/lib/use-session";
 import { isPrivileged } from "@/lib/session";
 import { Button } from "@/components/ui/button";
@@ -49,6 +51,14 @@ function EquipmentListPage() {
 
   const totalPages = Math.max(1, Math.ceil((query.data?.total ?? 0) / PAGE));
 
+  const equipmentIds = useMemo(() => (query.data?.rows ?? []).map((r) => r.id), [query.data]);
+  const bookingSlots = useQuery({
+    queryKey: ["equipment-booking-slots", equipmentIds],
+    queryFn: () => fetchEquipmentBookingSlots(equipmentIds),
+    enabled: equipmentIds.length > 0,
+    refetchInterval: 60_000,
+  });
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between flex-wrap gap-2">
@@ -90,35 +100,48 @@ function EquipmentListPage() {
         <div className="text-center text-sm text-muted-foreground py-10">No equipment matches your filters.</div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {query.data!.rows.map((e) => (
-            <Card key={e.id} className="hover:shadow-elevated transition-shadow">
-              <CardContent className="p-5 space-y-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="text-xs font-mono text-muted-foreground">{e.equipment_code}</div>
-                    <Link to="/equipment/$id" params={{ id: e.id }} className="font-semibold hover:text-primary">
-                      {e.name}
-                    </Link>
+          {query.data!.rows.map((e) => {
+            const availability = e.status !== "active"
+              ? { state: "unavailable" as const, reasonLabel: e.status === "maintenance" ? "Under maintenance" : "Retired" }
+              : computeEquipmentAvailability(bookingSlots.data?.[e.id] ?? [], e.total_quantity);
+            const bookingDisabled = availability.state === "booked" || availability.state === "unavailable";
+            return (
+              <Card key={e.id} className="hover:shadow-elevated transition-shadow">
+                <CardContent className="p-5 space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="text-xs font-mono text-muted-foreground">{e.equipment_code}</div>
+                      <Link to="/equipment/$id" params={{ id: e.id }} className="font-semibold hover:text-primary">
+                        {e.name}
+                      </Link>
+                    </div>
+                    <Badge variant={e.status === "active" ? "default" : "secondary"} className="capitalize">{e.status}</Badge>
                   </div>
-                  <Badge variant={e.status === "active" ? "default" : "secondary"} className="capitalize">{e.status}</Badge>
-                </div>
-                <div className="text-xs space-y-0.5 text-muted-foreground">
-                  <div><span className="font-medium text-foreground">Category:</span> {e.category}</div>
-                  <div><span className="font-medium text-foreground">Location:</span> {e.lab_location}</div>
-                  {e.manufacturer && <div><span className="font-medium text-foreground">Mfr:</span> {e.manufacturer} {e.model}</div>}
-                </div>
-                <div className="flex items-center justify-between pt-2 border-t">
-                  <div className="text-sm">Qty: <span className="font-semibold">{e.total_quantity}</span></div>
-                  <div className="flex gap-1">
-                    <Link to="/equipment/$id" params={{ id: e.id }}>
-                      <Button size="sm" variant="outline">Book</Button>
-                    </Link>
-                    {canManage && <EquipmentRowActions equipment={e} onDone={() => qc.invalidateQueries({ queryKey: ["equipment-list"] })} />}
+                  <div className="text-xs space-y-0.5 text-muted-foreground">
+                    <div><span className="font-medium text-foreground">Category:</span> {e.category}</div>
+                    <div><span className="font-medium text-foreground">Location:</span> {e.lab_location}</div>
+                    {e.manufacturer && <div><span className="font-medium text-foreground">Mfr:</span> {e.manufacturer} {e.model}</div>}
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                  <div className="pt-2 border-t">
+                    <EquipmentAvailabilityBadge availability={availability} />
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t">
+                    <div className="text-sm">Qty: <span className="font-semibold">{e.total_quantity}</span></div>
+                    <div className="flex gap-1">
+                      {bookingDisabled ? (
+                        <Button size="sm" variant="outline" disabled>Book</Button>
+                      ) : (
+                        <Link to="/equipment/$id" params={{ id: e.id }}>
+                          <Button size="sm" variant="outline">Book</Button>
+                        </Link>
+                      )}
+                      {canManage && <EquipmentRowActions equipment={e} onDone={() => qc.invalidateQueries({ queryKey: ["equipment-list"] })} />}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
 

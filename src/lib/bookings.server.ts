@@ -3,11 +3,12 @@ import { z } from "zod";
 import { getSupabaseEnvVar } from "@/integrations/supabase/env";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
-import { validateBookingTimeRange } from "./booking-validation";
+import { validateBookingDateTimeRange } from "./booking-validation";
 
 const bookingInputSchema = z.object({
   equipment_id: z.string().uuid(),
   booking_date: z.string(),
+  end_date: z.string(),
   start_time: z.string(),
   end_time: z.string(),
   quantity: z.number().int().positive(),
@@ -45,18 +46,20 @@ export const createBookingServerFn = createServerFn({ method: "POST" })
       throw new Error(userError?.message ?? "Unable to resolve the authenticated user");
     }
 
-    const timeValidation = validateBookingTimeRange({
+    const rangeValidation = validateBookingDateTimeRange({
+      fromDate: data.booking_date,
+      toDate: data.end_date,
       startTime: data.start_time,
       endTime: data.end_time,
     });
 
-    if (!timeValidation.isValid || !timeValidation.startMinutes || !timeValidation.endMinutes) {
-      throw new Error("invalid_time_range");
+    if (!rangeValidation.isValid || rangeValidation.startMinutes === undefined || rangeValidation.endMinutes === undefined) {
+      throw new Error(data.end_date < data.booking_date ? "invalid_date_range" : "invalid_time_range");
     }
 
     const labStartMinutes = 8 * 60;
     const labEndMinutes = 20 * 60;
-    if (timeValidation.startMinutes < labStartMinutes || timeValidation.endMinutes > labEndMinutes) {
+    if (rangeValidation.startMinutes < labStartMinutes || rangeValidation.endMinutes > labEndMinutes) {
       throw new Error("outside_lab_hours");
     }
 
@@ -64,6 +67,7 @@ export const createBookingServerFn = createServerFn({ method: "POST" })
       equipment_id: data.equipment_id,
       user_id: userId,
       booking_date: data.booking_date,
+      end_date: data.end_date,
       start_time: data.start_time,
       end_time: data.end_time,
       quantity: data.quantity,
