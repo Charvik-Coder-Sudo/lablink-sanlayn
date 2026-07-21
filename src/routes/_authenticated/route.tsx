@@ -4,6 +4,7 @@ import { useSessionUser } from "@/lib/use-session";
 import { highestRole, isAdmin, isPrivileged, type AppRole } from "@/lib/session";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { BrandMark } from "@/components/brand-mark";
 import {
   LayoutDashboard, Boxes, Wrench, CalendarCheck2, BarChart3, Users, UploadCloud,
   ClipboardList, User, LogOut, Menu,
@@ -43,7 +44,12 @@ function AuthenticatedLayout() {
   const [open, setOpen] = useState(false);
 
   if (isLoading) {
-    return <div className="flex min-h-screen items-center justify-center text-muted-foreground">Loading…</div>;
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 text-muted-foreground">
+        <BrandMark size={32} />
+        <span>Loading…</span>
+      </div>
+    );
   }
   if (!user) return null;
 

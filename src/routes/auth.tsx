@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
+import { BrandMark } from "@/components/brand-mark";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 
@@ -76,6 +77,7 @@ function AuthPage() {
         <Card className="w-full max-w-md shadow-elevated border-border">
           <CardContent className="p-8">
             <div className="lg:hidden mb-6">
+              <BrandMark size={28} className="mb-2" />
               <div className="text-xl font-bold tracking-tight">SANLAYAN</div>
               <div className="text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground mt-1">
                 Lab Management System
