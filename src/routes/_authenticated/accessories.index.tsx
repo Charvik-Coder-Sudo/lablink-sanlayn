@@ -3,8 +3,9 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   listAccessories, createAccessory, updateAccessory, deleteAccessory, uploadAccessoryPhoto,
-  bulkCreateAccessories, extractSupabaseError, type AccessoryInput, type BulkImportResult,
+  bulkCreateAccessories, type AccessoryInput, type BulkImportResult,
 } from "@/lib/accessories";
+import { extractSupabaseError } from "@/lib/supabase-errors";
 import { fetchAccessoryBookingSlots, computeAccessoryAvailability } from "@/lib/accessory-availability";
 import { parseAccessoriesWorkbook, type ParsedAccessoryRow } from "@/lib/accessory-excel";
 import type { AvailabilityState, EquipmentAvailability } from "@/lib/equipment-availability";

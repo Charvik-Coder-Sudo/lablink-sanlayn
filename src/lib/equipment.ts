@@ -1,5 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { logAudit } from "./audit";
+import { extractSupabaseError, type SupabaseErrorInfo } from "./supabase-errors";
 
 export interface EquipmentInput {
   equipment_code: string;
