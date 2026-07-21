@@ -49,6 +49,124 @@ export type Database = {
           },
         ]
       }
+      accessories: {
+        Row: {
+          created_at: string
+          description: string
+          id: string
+          make: string | null
+          model: string | null
+          photo_url: string | null
+          quantity: number
+          remarks: string | null
+          serial_number: string | null
+          status: Database["public"]["Enums"]["equipment_status"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          id?: string
+          make?: string | null
+          model?: string | null
+          photo_url?: string | null
+          quantity: number
+          remarks?: string | null
+          serial_number?: string | null
+          status?: Database["public"]["Enums"]["equipment_status"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          id?: string
+          make?: string | null
+          model?: string | null
+          photo_url?: string | null
+          quantity?: number
+          remarks?: string | null
+          serial_number?: string | null
+          status?: Database["public"]["Enums"]["equipment_status"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      accessory_bookings: {
+        Row: {
+          accessory_id: string
+          booking_date: string
+          cancelled_at: string | null
+          created_at: string
+          end_date: string
+          end_time: string
+          id: string
+          purpose: string
+          quantity: number
+          returned_at: string | null
+          returned_by: string | null
+          start_time: string
+          status: Database["public"]["Enums"]["booking_status"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          accessory_id: string
+          booking_date: string
+          cancelled_at?: string | null
+          created_at?: string
+          end_date: string
+          end_time: string
+          id?: string
+          purpose: string
+          quantity: number
+          returned_at?: string | null
+          returned_by?: string | null
+          start_time: string
+          status?: Database["public"]["Enums"]["booking_status"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          accessory_id?: string
+          booking_date?: string
+          cancelled_at?: string | null
+          created_at?: string
+          end_date?: string
+          end_time?: string
+          id?: string
+          purpose?: string
+          quantity?: number
+          returned_at?: string | null
+          returned_by?: string | null
+          start_time?: string
+          status?: Database["public"]["Enums"]["booking_status"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "accessory_bookings_accessory_id_fkey"
+            columns: ["accessory_id"]
+            isOneToOne: false
+            referencedRelation: "accessories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "accessory_bookings_returned_by_profile_fk"
+            columns: ["returned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "accessory_bookings_user_profile_fk"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bookings: {
         Row: {
           booking_date: string
@@ -244,6 +362,50 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      accessory_available_qty: {
+        Args: {
+          _accessory_id: string
+          _end: string
+          _from_date: string
+          _start: string
+          _to_date: string
+        }
+        Returns: number
+      }
+      create_accessory_booking: {
+        Args: {
+          _accessory_id: string
+          _booking_date: string
+          _end: string
+          _end_date: string
+          _purpose: string
+          _quantity: number
+          _start: string
+        }
+        Returns: {
+          accessory_id: string
+          booking_date: string
+          cancelled_at: string | null
+          created_at: string
+          end_date: string
+          end_time: string
+          id: string
+          purpose: string
+          quantity: number
+          returned_at: string | null
+          returned_by: string | null
+          start_time: string
+          status: Database["public"]["Enums"]["booking_status"]
+          updated_at: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "accessory_bookings"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       create_booking: {
         Args: {
           _booking_date: string
