@@ -1,8 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { listEquipment, createEquipment, updateEquipment, deleteEquipment, type EquipmentInput } from "@/lib/equipment";
+import {
+  listEquipment, createEquipment, updateEquipment, deleteEquipment, bulkImportEquipment,
+  type EquipmentInput, type EquipmentImportRow, type EquipmentImportResult,
+} from "@/lib/equipment";
 import { fetchEquipmentBookingSlots, computeEquipmentAvailability, type AvailabilityState, type EquipmentAvailability } from "@/lib/equipment-availability";
+import {
+  parseEquipmentWorkbook, validateEquipmentRows, buildRemarksWithCalibration,
+  type ParsedEquipmentRow, type RowValidationFailure,
+} from "@/lib/equipment-excel";
 import { useSessionUser } from "@/lib/use-session";
 import { isPrivileged } from "@/lib/session";
 import { cn } from "@/lib/utils";
@@ -14,8 +21,9 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Search, Pencil, Trash2, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, ArrowUpDown, UploadCloud, Loader2, Download } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
+import * as XLSX from "xlsx";
 
 export const Route = createFileRoute("/_authenticated/equipment/")({
   component: EquipmentListPage,
@@ -132,7 +140,12 @@ function EquipmentListPage() {
           <h1 className="text-2xl font-semibold">Equipment</h1>
           <p className="text-sm text-muted-foreground">{query.data?.total ?? 0} items in inventory</p>
         </div>
-        {canManage && <EquipmentDialog onDone={() => qc.invalidateQueries({ queryKey: ["equipment-list"] })} />}
+        {canManage && (
+          <div className="flex gap-2">
+            <EquipmentImportDialog onDone={() => qc.invalidateQueries({ queryKey: ["equipment-list"] })} />
+            <EquipmentDialog onDone={() => qc.invalidateQueries({ queryKey: ["equipment-list"] })} />
+          </div>
+        )}
       </div>
 
       <Card>
