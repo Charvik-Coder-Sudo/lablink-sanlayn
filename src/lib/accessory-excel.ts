@@ -18,6 +18,12 @@ export interface ParsedAccessoriesResult {
   photosFound: number;
 }
 
+export interface RowValidationFailure {
+  row: number;
+  description: string;
+  reason: string;
+}
+
 const HEADER_MAP: Record<string, string> = {
   "description": "description",
   "make": "make",
@@ -194,4 +200,26 @@ export async function parseAccessoriesWorkbook(file: File): Promise<ParsedAccess
   }
 
   return { rows, sheetName: pick.sheetName, photosFound: photosByXmlRow.size };
+}
+
+export function validateAccessoryRows(rows: ParsedAccessoryRow[]): {
+  valid: ParsedAccessoryRow[];
+  invalid: RowValidationFailure[];
+} {
+  const valid: ParsedAccessoryRow[] = [];
+  const invalid: RowValidationFailure[] = [];
+
+  for (const row of rows) {
+    const missing: string[] = [];
+    if (!row.description) missing.push("Description");
+    if (!Number.isFinite(row.quantity) || row.quantity <= 0) missing.push("Qty");
+
+    if (missing.length > 0) {
+      invalid.push({ row: row.rowNumber, description: row.description || "(no description)", reason: `Missing ${missing.join(", ")}` });
+    } else {
+      valid.push(row);
+    }
+  }
+
+  return { valid, invalid };
 }

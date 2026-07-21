@@ -13,6 +13,8 @@ export interface EquipmentInput {
   total_quantity: number;
   remarks?: string | null;
   status?: "active" | "maintenance" | "retired";
+  calibration_date?: string | null;
+  calibration_due_date?: string | null;
 }
 
 export async function listEquipment(opts: {
@@ -79,6 +81,8 @@ export interface EquipmentImportRow {
   lab_location: string;
   total_quantity: number;
   remarks: string | null;
+  calibration_date: string | null;
+  calibration_due_date: string | null;
 }
 
 export interface EquipmentImportResult extends Partial<SupabaseErrorInfo> {

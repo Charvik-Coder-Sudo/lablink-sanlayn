@@ -14,6 +14,7 @@ export interface ParsedEquipmentRow {
   calibration_date: string | null; // yyyy-MM-dd or null
   calibration_due_date: string | null;
   remarks: string;
+  dateWarnings: string[]; // non-blocking: cell had content but couldn't be parsed as a date
 }
 
 export interface ParsedEquipmentResult {
@@ -145,6 +146,12 @@ export async function parseEquipmentWorkbook(file: File): Promise<ParsedEquipmen
     // Skip fully blank rows (common at the end of a sheet's used range).
     if (!description && !category && !deviceSerial && !assetId && qty === null && !remarks) continue;
 
+    const calibrationDate = pick.fields.calibration_date !== undefined ? parseExcelDate(r[pick.fields.calibration_date]) : null;
+    const calibrationDueDate = pick.fields.calibration_due_date !== undefined ? parseExcelDate(r[pick.fields.calibration_due_date]) : null;
+    const dateWarnings: string[] = [];
+    if (!calibrationDate && cellText(r, pick.fields.calibration_date)) dateWarnings.push(`Calibration date "${cellText(r, pick.fields.calibration_date)}" could not be parsed`);
+    if (!calibrationDueDate && cellText(r, pick.fields.calibration_due_date)) dateWarnings.push(`Calibration due date "${cellText(r, pick.fields.calibration_due_date)}" could not be parsed`);
+
     rows.push({
       rowNumber: i + 1,
       sl_no: cellText(r, pick.fields.sl_no),
@@ -155,29 +162,14 @@ export async function parseEquipmentWorkbook(file: File): Promise<ParsedEquipmen
       device_serial_no: deviceSerial,
       asset_id: assetId,
       qty,
-      calibration_date: pick.fields.calibration_date !== undefined ? parseExcelDate(r[pick.fields.calibration_date]) : null,
-      calibration_due_date: pick.fields.calibration_due_date !== undefined ? parseExcelDate(r[pick.fields.calibration_due_date]) : null,
+      calibration_date: calibrationDate,
+      calibration_due_date: calibrationDueDate,
       remarks,
+      dateWarnings,
     });
   }
 
   return { rows, sheetName: pick.sheetName };
-}
-
-/**
- * The existing `equipment` table has no calibration-date columns and we are not adding any
- * (per explicit "do not redesign the schema" instruction), so calibration dates are preserved
- * as readable text folded into Remarks rather than silently dropped.
- */
-export function buildRemarksWithCalibration(row: ParsedEquipmentRow): string | null {
-  const parts: string[] = [];
-  if (row.remarks) parts.push(row.remarks);
-  if (row.calibration_date || row.calibration_due_date) {
-    const cal = row.calibration_date ? `Calibration: ${row.calibration_date}` : "Calibration: —";
-    const due = row.calibration_due_date ? ` (due ${row.calibration_due_date})` : "";
-    parts.push(`${cal}${due}`);
-  }
-  return parts.length > 0 ? parts.join(" · ") : null;
 }
 
 const REQUIRED_ASSET_ID_REASON = "Asset ID (equipment_code is required and unique in the existing schema)";

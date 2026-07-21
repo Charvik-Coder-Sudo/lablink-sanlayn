@@ -122,6 +122,12 @@ function EquipmentDetailPage() {
             <Info label="Model">{e.model ?? "—"}</Info>
             <Info label="Serial Number">{e.serial_number ?? "—"}</Info>
             <Info label="Total Quantity">{e.total_quantity}</Info>
+            <Info label="Calibration Date">{e.calibration_date ?? "—"}</Info>
+            <Info label="Calibration Due Date">
+              <span className={e.calibration_due_date && e.calibration_due_date < format(new Date(), "yyyy-MM-dd") ? "text-destructive font-medium" : undefined}>
+                {e.calibration_due_date ?? "—"}
+              </span>
+            </Info>
             {e.remarks && <Info label="Remarks" className="sm:col-span-2">{e.remarks}</Info>}
           </CardContent>
         </Card>

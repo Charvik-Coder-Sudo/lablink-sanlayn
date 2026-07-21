@@ -245,6 +245,8 @@ export type Database = {
       }
       equipment: {
         Row: {
+          calibration_date: string | null
+          calibration_due_date: string | null
           category: string
           created_at: string
           equipment_code: string
@@ -260,6 +262,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          calibration_date?: string | null
+          calibration_due_date?: string | null
           category: string
           created_at?: string
           equipment_code: string
@@ -275,6 +279,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          calibration_date?: string | null
+          calibration_due_date?: string | null
           category?: string
           created_at?: string
           equipment_code?: string

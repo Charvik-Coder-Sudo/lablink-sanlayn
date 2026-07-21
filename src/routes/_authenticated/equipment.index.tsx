@@ -7,7 +7,7 @@ import {
 } from "@/lib/equipment";
 import { fetchEquipmentBookingSlots, computeEquipmentAvailability, type AvailabilityState, type EquipmentAvailability } from "@/lib/equipment-availability";
 import {
-  parseEquipmentWorkbook, validateEquipmentRows, buildRemarksWithCalibration,
+  parseEquipmentWorkbook, validateEquipmentRows,
   type ParsedEquipmentRow, type RowValidationFailure,
 } from "@/lib/equipment-excel";
 import { extractSupabaseError } from "@/lib/supabase-errors";
@@ -27,7 +27,16 @@ import { Plus, Search, Pencil, Trash2, ChevronLeft, ChevronRight, ArrowUp, Arrow
 import { Textarea } from "@/components/ui/textarea";
 import * as XLSX from "xlsx";
 
+interface EquipmentSearch {
+  availability?: "all" | AvailabilityState;
+}
+
 export const Route = createFileRoute("/_authenticated/equipment/")({
+  validateSearch: (search: Record<string, unknown>): EquipmentSearch => ({
+    availability: (["available", "booked", "reserved", "unavailable"] as const).includes(search.availability as AvailabilityState)
+      ? (search.availability as AvailabilityState)
+      : undefined,
+  }),
   component: EquipmentListPage,
 });
 
@@ -59,9 +68,11 @@ function compareRows(a: EnrichedRow, b: EnrichedRow, key: SortKey): number {
 function EquipmentListPage() {
   const { data: user } = useSessionUser();
   const canManage = user ? isPrivileged(user.roles) : false;
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const routeSearch = Route.useSearch();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<string>("all");
-  const [availabilityFilter, setAvailabilityFilter] = useState<"all" | AvailabilityState>("all");
+  const [availabilityFilter, setAvailabilityFilter] = useState<"all" | AvailabilityState>(routeSearch.availability ?? "all");
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [page, setPage] = useState(0);
@@ -219,8 +230,10 @@ function EquipmentListPage() {
                         <td className="py-2.5 px-3 font-mono text-xs text-muted-foreground">{e.serial_number || "—"}</td>
                         <td className="py-2.5 px-3 font-mono text-xs">{e.equipment_code}</td>
                         <td className="py-2.5 px-3 text-right">{e.total_quantity}</td>
-                        <td className="py-2.5 px-3 text-muted-foreground">—</td>
-                        <td className="py-2.5 px-3 text-muted-foreground">—</td>
+                        <td className="py-2.5 px-3 text-muted-foreground">{e.calibration_date || "—"}</td>
+                        <td className={cn("py-2.5 px-3", e.calibration_due_date && e.calibration_due_date < todayStr ? "text-destructive font-medium" : "text-muted-foreground")}>
+                          {e.calibration_due_date || "—"}
+                        </td>
                         <td className="py-2.5 px-3">
                           <span className={cn("inline-flex items-center gap-1.5 font-medium whitespace-nowrap", cfg.text)}>
                             <span className={cn("h-2 w-2 rounded-full shrink-0", cfg.dot)} />
@@ -276,7 +289,7 @@ function EquipmentListPage() {
 }
 
 function emptyEq(): EquipmentInput {
-  return { equipment_code: "", name: "", category: "", manufacturer: "", model: "", serial_number: "", lab_location: "", total_quantity: 1, remarks: "", status: "active" };
+  return { equipment_code: "", name: "", category: "", manufacturer: "", model: "", serial_number: "", lab_location: "", total_quantity: 1, remarks: "", status: "active", calibration_date: null, calibration_due_date: null };
 }
 
 function EquipmentDialog({ initial, onDone, trigger }: { initial?: EquipmentInput & { id?: string }; onDone: () => void; trigger?: React.ReactNode }) {
@@ -321,6 +334,8 @@ function EquipmentDialog({ initial, onDone, trigger }: { initial?: EquipmentInpu
               </SelectContent>
             </Select>
           </div>
+          <div className="space-y-1.5"><Label>Calibration date</Label><Input type="date" value={form.calibration_date ?? ""} onChange={(e) => setForm({ ...form, calibration_date: e.target.value || null })} /></div>
+          <div className="space-y-1.5"><Label>Calibration due date</Label><Input type="date" value={form.calibration_due_date ?? ""} onChange={(e) => setForm({ ...form, calibration_due_date: e.target.value || null })} /></div>
           <div className="space-y-1.5 sm:col-span-2"><Label>Remarks</Label><Textarea rows={2} value={form.remarks ?? ""} onChange={(e) => setForm({ ...form, remarks: e.target.value })} /></div>
           <DialogFooter className="sm:col-span-2">
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
@@ -437,7 +452,9 @@ function EquipmentImportDialog({ onDone }: { onDone: () => void }) {
       serial_number: row.device_serial_no,
       lab_location: "",
       total_quantity: row.qty ?? 0,
-      remarks: buildRemarksWithCalibration(row),
+      remarks: row.remarks || null,
+      calibration_date: row.calibration_date,
+      calibration_due_date: row.calibration_due_date,
     }));
 
     const res = await bulkImportEquipment(payload, (done, total) => setProgress({ done, total }));
@@ -544,8 +561,12 @@ function EquipmentImportDialog({ onDone }: { onDone: () => void }) {
                         <td className="px-2 py-1 font-mono">{r.device_serial_no || "—"}</td>
                         <td className="px-2 py-1 font-mono">{r.asset_id || "—"}</td>
                         <td className="px-2 py-1 text-right">{r.qty ?? "—"}</td>
-                        <td className="px-2 py-1">{r.calibration_date ?? "—"}</td>
-                        <td className="px-2 py-1">{r.calibration_due_date ?? "—"}</td>
+                        <td className="px-2 py-1" title={r.dateWarnings.find((w) => w.startsWith("Calibration date"))}>
+                          {r.calibration_date ?? (r.dateWarnings.some((w) => w.startsWith("Calibration date")) ? <span className="text-destructive">invalid</span> : "—")}
+                        </td>
+                        <td className="px-2 py-1" title={r.dateWarnings.find((w) => w.startsWith("Calibration due"))}>
+                          {r.calibration_due_date ?? (r.dateWarnings.some((w) => w.startsWith("Calibration due")) ? <span className="text-destructive">invalid</span> : "—")}
+                        </td>
                         <td className="px-2 py-1 max-w-[160px] truncate">{r.remarks || "—"}</td>
                       </tr>
                     ))}

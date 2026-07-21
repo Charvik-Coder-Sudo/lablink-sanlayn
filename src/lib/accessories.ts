@@ -56,16 +56,41 @@ export async function deleteAccessory(id: string) {
 export interface BulkImportResult extends Partial<SupabaseErrorInfo> {
   row: number;
   description: string;
-  status: "created" | "error";
+  status: "created" | "skipped" | "error";
+  reason?: string;
   photoWarning?: string | null;
+}
+
+const PLACEHOLDER_SERIALS = new Set(["", "na", "n/a", "-", "none"]);
+
+export async function fetchExistingAccessorySerials(): Promise<Set<string>> {
+  const { data, error } = await supabase.from("accessories").select("serial_number");
+  if (error) throw error;
+  const serials = new Set<string>();
+  for (const row of data ?? []) {
+    const key = (row.serial_number ?? "").trim().toLowerCase();
+    if (key && !PLACEHOLDER_SERIALS.has(key)) serials.add(key);
+  }
+  return serials;
 }
 
 export async function bulkCreateAccessories(
   rows: Array<AccessoryInput & { rowNumber: number; photoWarning?: string | null }>,
 ): Promise<BulkImportResult[]> {
+  const existingSerials = await fetchExistingAccessorySerials();
+  const seenSerials = new Set<string>();
   const results: BulkImportResult[] = [];
+
   for (const row of rows) {
     const { rowNumber, photoWarning, ...input } = row;
+    const serialKey = (input.serial_number ?? "").trim().toLowerCase();
+    const isRealSerial = serialKey && !PLACEHOLDER_SERIALS.has(serialKey);
+    if (isRealSerial && (existingSerials.has(serialKey) || seenSerials.has(serialKey))) {
+      results.push({ row: rowNumber, description: input.description, status: "skipped", reason: "Device Serial Number already exists" });
+      continue;
+    }
+    if (isRealSerial) seenSerials.add(serialKey);
+
     console.log(`[accessories import] row ${rowNumber} payload:`, input);
     try {
       const { error } = await supabase.from("accessories").insert(input as never);

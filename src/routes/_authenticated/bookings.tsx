@@ -13,7 +13,14 @@ import { toast } from "sonner";
 import { useState } from "react";
 import { format, parseISO } from "date-fns";
 
+interface BookingsSearch {
+  status?: string;
+}
+
 export const Route = createFileRoute("/_authenticated/bookings")({
+  validateSearch: (search: Record<string, unknown>): BookingsSearch => ({
+    status: typeof search.status === "string" ? search.status : undefined,
+  }),
   component: BookingsPage,
 });
 
@@ -21,8 +28,9 @@ function BookingsPage() {
   const { data: user } = useSessionUser();
   const canManage = user ? isPrivileged(user.roles) : false;
   const isManager = user ? !isAdmin(user.roles) && isPrivileged(user.roles) : false;
+  const routeSearch = Route.useSearch();
   const [scope, setScope] = useState<"mine" | "all">(canManage ? "all" : "mine");
-  const [status, setStatus] = useState<string>("all");
+  const [status, setStatus] = useState<string>(routeSearch.status ?? "all");
   const [search, setSearch] = useState("");
   const qc = useQueryClient();
 

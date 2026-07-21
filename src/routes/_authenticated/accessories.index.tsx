@@ -7,7 +7,7 @@ import {
 } from "@/lib/accessories";
 import { extractSupabaseError } from "@/lib/supabase-errors";
 import { fetchAccessoryBookingSlots, computeAccessoryAvailability } from "@/lib/accessory-availability";
-import { parseAccessoriesWorkbook, type ParsedAccessoryRow } from "@/lib/accessory-excel";
+import { parseAccessoriesWorkbook, validateAccessoryRows, type ParsedAccessoryRow, type RowValidationFailure } from "@/lib/accessory-excel";
 import type { AvailabilityState, EquipmentAvailability } from "@/lib/equipment-availability";
 import { useSessionUser } from "@/lib/use-session";
 import { isPrivileged } from "@/lib/session";
@@ -305,6 +305,8 @@ function AccessoryRowActions({ accessory, onDone }: { accessory: AccessoryRow; o
 function AccessoryImportDialog({ onDone }: { onDone: () => void }) {
   const [open, setOpen] = useState(false);
   const [parsed, setParsed] = useState<ParsedAccessoryRow[]>([]);
+  const [validRows, setValidRows] = useState<ParsedAccessoryRow[]>([]);
+  const [invalidRows, setInvalidRows] = useState<RowValidationFailure[]>([]);
   const [sheetName, setSheetName] = useState("");
   const [photosFound, setPhotosFound] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -313,7 +315,10 @@ function AccessoryImportDialog({ onDone }: { onDone: () => void }) {
   async function onFile(file: File) {
     try {
       const res = await parseAccessoriesWorkbook(file);
+      const { valid, invalid } = validateAccessoryRows(res.rows);
       setParsed(res.rows);
+      setValidRows(valid);
+      setInvalidRows(invalid);
       setSheetName(res.sheetName);
       setPhotosFound(res.photosFound);
       setResults([]);
@@ -326,7 +331,7 @@ function AccessoryImportDialog({ onDone }: { onDone: () => void }) {
   async function runImport() {
     setBusy(true);
     try {
-      const withPhotos = await Promise.all(parsed.map(async (row) => {
+      const withPhotos = await Promise.all(validRows.map(async (row) => {
         let photo_url: string | null = null;
         let photoWarning: string | null = null;
         if (row.photoBlob) {
@@ -375,11 +380,35 @@ function AccessoryImportDialog({ onDone }: { onDone: () => void }) {
             Embedded row photos are picked up automatically where present; rows without an embedded photo import without one.
           </div>
           <Input type="file" accept=".xlsx,.xls" onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} />
-          {parsed.length > 0 && (
-            <div className="flex items-center gap-3 text-sm">
-              <div>{parsed.length} rows ready from <span className="font-medium">{sheetName}</span> ({photosFound} photos found)</div>
-              <Button onClick={runImport} disabled={busy}>{busy && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Run import</Button>
-            </div>
+          {parsed.length > 0 && results.length === 0 && (
+            <>
+              <div className="flex items-center gap-3 text-sm">
+                <div>
+                  {parsed.length} rows from <span className="font-medium">{sheetName}</span> ({photosFound} photos found)
+                  {" · "}<span className="text-emerald-600 dark:text-emerald-400">{validRows.length} valid</span>
+                  {invalidRows.length > 0 && <> · <span className="text-destructive">{invalidRows.length} invalid</span></>}
+                </div>
+                <Button onClick={runImport} disabled={busy || validRows.length === 0}>{busy && <Loader2 className="h-4 w-4 animate-spin mr-2" />} Run import</Button>
+              </div>
+              {invalidRows.length > 0 && (
+                <div className="max-h-40 overflow-y-auto border rounded-md border-destructive/40">
+                  <table className="w-full text-sm">
+                    <thead className="bg-destructive/10 text-xs uppercase text-muted-foreground sticky top-0">
+                      <tr><th className="text-left px-3 py-1.5">Row</th><th className="text-left px-3 py-1.5">Description</th><th className="text-left px-3 py-1.5">Reason</th></tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {invalidRows.map((r, i) => (
+                        <tr key={i}>
+                          <td className="px-3 py-1">{r.row}</td>
+                          <td className="px-3 py-1">{r.description}</td>
+                          <td className="px-3 py-1 text-destructive">{r.reason}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
           )}
           {results.length > 0 && (
             <div className="max-h-80 overflow-auto border rounded-md">
@@ -396,16 +425,27 @@ function AccessoryImportDialog({ onDone }: { onDone: () => void }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
+                  {invalidRows.map((r, i) => (
+                    <tr key={`invalid-${i}`}>
+                      <td className="px-3 py-1.5">{r.row}</td>
+                      <td className="px-3 py-1.5">{r.description}</td>
+                      <td className="px-3 py-1.5"><Badge variant="destructive">skipped</Badge></td>
+                      <td className="px-3 py-1.5" />
+                      <td className="px-3 py-1.5 text-muted-foreground">{r.reason}</td>
+                      <td className="px-3 py-1.5" />
+                      <td className="px-3 py-1.5" />
+                    </tr>
+                  ))}
                   {results.map((r, i) => (
                     <tr key={i}>
                       <td className="px-3 py-1.5">{r.row}</td>
                       <td className="px-3 py-1.5">{r.description}</td>
                       <td className="px-3 py-1.5 align-top">
-                        <Badge variant={r.status === "created" ? "default" : "destructive"}>{r.status}</Badge>
+                        <Badge variant={r.status === "created" ? "default" : r.status === "skipped" ? "secondary" : "destructive"}>{r.status}</Badge>
                         {r.photoWarning && <div className="mt-1 text-[11px] text-amber-600 dark:text-amber-400 whitespace-nowrap">{r.photoWarning}</div>}
                       </td>
                       <td className="px-3 py-1.5 font-mono text-xs text-muted-foreground">{r.code ?? ""}</td>
-                      <td className="px-3 py-1.5 text-muted-foreground">{r.message ?? ""}</td>
+                      <td className="px-3 py-1.5 text-muted-foreground">{r.reason ?? r.message ?? ""}</td>
                       <td className="px-3 py-1.5 text-muted-foreground">{r.details ?? ""}</td>
                       <td className="px-3 py-1.5 text-muted-foreground">{r.hint ?? ""}</td>
                     </tr>

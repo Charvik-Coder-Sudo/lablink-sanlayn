@@ -2,7 +2,6 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Bar, Doughnut, Line } from "react-chartjs-2";
 import {
@@ -10,127 +9,212 @@ import {
   PointElement, LineElement, Tooltip, Legend,
 } from "chart.js";
 import { format, subDays } from "date-fns";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Download } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Download, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import {
+  fetchBookingAnalyticsRows, fetchEquipmentUtilization,
+  computeDepartmentUsage, computeCategoryUsage, computeTopEquipment, computeMonthlyTrend,
+} from "@/lib/analytics";
+import { exportReportsExcel, exportReportCsv, type ReportType, type ExportFilters } from "@/lib/reports-export";
 
 ChartJS.register(ArcElement, BarElement, CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend);
+
+const CHART_COLORS = ["#6A1B9A", "#9C27B0", "#BA68C8", "#4A148C", "#7B1FA2", "#AB47BC", "#CE93D8"];
 
 export const Route = createFileRoute("/_authenticated/reports")({
   component: ReportsPage,
 });
 
 function ReportsPage() {
-  const [range, setRange] = useState<"7" | "30" | "90">("30");
-  const days = parseInt(range, 10);
-  const from = format(subDays(new Date(), days - 1), "yyyy-MM-dd");
-  const to = format(new Date(), "yyyy-MM-dd");
+  const [from, setFrom] = useState(format(subDays(new Date(), 29), "yyyy-MM-dd"));
+  const [to, setTo] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [department, setDepartment] = useState("all");
+  const [category, setCategory] = useState("all");
+  const [equipment, setEquipment] = useState("all");
+  const [userId, setUserId] = useState("all");
+  const [status, setStatus] = useState("all");
 
-  const data = useQuery({
-    queryKey: ["reports", from, to],
+  const filters: ExportFilters = { from, to, department, category, equipment, userId, status };
+
+  const filterOptions = useQuery({
+    queryKey: ["report-filter-options"],
     queryFn: async () => {
-      const { data: bookings } = await supabase
-        .from("bookings")
-        .select("id,booking_date,status,quantity,equipment:equipment_id(name,category),profile:profiles!bookings_user_profile_fk(department)")
-        .gte("booking_date", from).lte("booking_date", to);
-      return bookings ?? [];
+      const [profiles, categories, equipmentNames] = await Promise.all([
+        supabase.from("profiles").select("id,full_name,department"),
+        supabase.from("equipment").select("category"),
+        supabase.from("equipment").select("name"),
+      ]);
+      const departments = Array.from(new Set((profiles.data ?? []).map((p) => p.department).filter((d): d is string => !!d))).sort();
+      const categoryList = Array.from(new Set((categories.data ?? []).map((c) => c.category))).sort();
+      const equipmentList = Array.from(new Set((equipmentNames.data ?? []).map((e) => e.name))).sort();
+      const users = (profiles.data ?? []).map((p) => ({ id: p.id, name: p.full_name })).sort((a, b) => a.name.localeCompare(b.name));
+      return { departments, categoryList, equipmentList, users };
     },
   });
 
-  const equipmentUsage: Record<string, number> = {};
-  const departmentUsage: Record<string, number> = {};
-  const dailyBookings: Record<string, number> = {};
-  let cancellations = 0, returned = 0;
-
-  for (let i = 0; i < days; i++) dailyBookings[format(subDays(new Date(), days - 1 - i), "yyyy-MM-dd")] = 0;
-
-  (data.data ?? []).forEach((b) => {
-    const eq = b.equipment?.name ?? "—";
-    const dept = b.profile?.department ?? "Unassigned";
-    equipmentUsage[eq] = (equipmentUsage[eq] ?? 0) + b.quantity;
-    departmentUsage[dept] = (departmentUsage[dept] ?? 0) + 1;
-    if (dailyBookings[b.booking_date] !== undefined) dailyBookings[b.booking_date] += 1;
-    if (b.status === "cancelled") cancellations += 1;
-    if (b.status === "returned") returned += 1;
+  const rows = useQuery({
+    queryKey: ["reports-rows", from, to, department, category, equipment, userId, status],
+    queryFn: () => fetchBookingAnalyticsRows(filters),
   });
 
-  const topEquipment = Object.entries(equipmentUsage).sort((a, b) => b[1] - a[1]).slice(0, 10);
-  const leastUsed = Object.entries(equipmentUsage).sort((a, b) => a[1] - b[1]).slice(0, 10);
+  const utilization = useQuery({
+    queryKey: ["reports-utilization"],
+    queryFn: () => fetchEquipmentUtilization(),
+  });
 
-  function exportCsv() {
-    const rows = [["Booking date","Status","Equipment","Category","Department","Quantity"]];
-    (data.data ?? []).forEach((b) => rows.push([
-      b.booking_date, b.status, b.equipment?.name ?? "", b.equipment?.category ?? "",
-      b.profile?.department ?? "", String(b.quantity),
-    ]));
-    const csv = rows.map((r) => r.map((v) => `"${(v ?? "").replaceAll('"','""')}"`).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url; a.download = `bookings_${from}_to_${to}.csv`; a.click();
-    URL.revokeObjectURL(url);
-  }
+  const departmentUsage = useMemo(() => computeDepartmentUsage(rows.data ?? []), [rows.data]);
+  const categoryUsage = useMemo(() => computeCategoryUsage(rows.data ?? []), [rows.data]);
+  const topEquipment = useMemo(() => computeTopEquipment(rows.data ?? [], 10), [rows.data]);
+  const leastUsed = useMemo(() => [...computeTopEquipment(rows.data ?? [], 1000)].reverse().slice(0, 10), [rows.data]);
+  const monthlyTrend = useMemo(() => computeMonthlyTrend(rows.data ?? []), [rows.data]);
+
+  const returned = (rows.data ?? []).filter((r) => r.status === "returned").length;
+  const cancelled = (rows.data ?? []).filter((r) => r.status === "cancelled").length;
 
   return (
     <div className="space-y-6">
       <div className="flex items-end justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Reports</h1>
-          <p className="text-sm text-muted-foreground">{from} → {to} · {data.data?.length ?? 0} bookings</p>
+          <p className="text-sm text-muted-foreground">{from} → {to} · {rows.data?.length ?? 0} bookings</p>
         </div>
-        <div className="flex gap-2 items-center">
-          <Select value={range} onValueChange={(v) => setRange(v as "7" | "30" | "90")}>
-            <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="7">Last 7 days</SelectItem>
-              <SelectItem value="30">Last 30 days</SelectItem>
-              <SelectItem value="90">Last 90 days</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button variant="outline" onClick={exportCsv}><Download className="h-4 w-4 mr-2" /> Export CSV</Button>
-        </div>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-4">
-        <MetricCard label="Total bookings" value={data.data?.length ?? 0} />
-        <MetricCard label="Cancellations" value={cancellations} />
-        <MetricCard label="Returns" value={returned} />
-        <MetricCard label="Utilization rate" value={`${data.data?.length ? Math.round((returned / data.data.length) * 100) : 0}%`} />
+        <ExportDialog filters={filters} />
       </div>
 
       <Card>
-        <CardHeader><CardTitle className="text-sm font-semibold">Daily bookings</CardTitle></CardHeader>
-        <CardContent className="h-72">
-          <Line
-            data={{
-              labels: Object.keys(dailyBookings).map((d) => format(new Date(d), "d MMM")),
-              datasets: [{ label: "Bookings", data: Object.values(dailyBookings), borderColor: "#6A1B9A", backgroundColor: "rgba(106,27,154,0.15)", fill: true, tension: 0.3 }],
-            }}
-            options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }}
-          />
+        <CardContent className="p-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+          <div className="space-y-1"><Label className="text-xs">From</Label><Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
+          <div className="space-y-1"><Label className="text-xs">To</Label><Input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div>
+          <div className="space-y-1">
+            <Label className="text-xs">Department</Label>
+            <Select value={department} onValueChange={setDepartment}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All departments</SelectItem>
+                {filterOptions.data?.departments.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Category</Label>
+            <Select value={category} onValueChange={setCategory}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All categories</SelectItem>
+                {filterOptions.data?.categoryList.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Equipment</Label>
+            <Select value={equipment} onValueChange={setEquipment}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All equipment</SelectItem>
+                {filterOptions.data?.equipmentList.map((e) => <SelectItem key={e} value={e}>{e}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">User</Label>
+            <Select value={userId} onValueChange={setUserId}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All users</SelectItem>
+                {filterOptions.data?.users.map((u) => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Status</Label>
+            <Select value={status} onValueChange={setStatus}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                <SelectItem value="booked">Booked</SelectItem>
+                <SelectItem value="returned">Returned</SelectItem>
+                <SelectItem value="cancelled">Cancelled</SelectItem>
+                <SelectItem value="completed">Completed</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </CardContent>
       </Card>
+
+      <div className="grid gap-4 md:grid-cols-4">
+        <MetricCard label="Total bookings" value={rows.data?.length ?? 0} />
+        <MetricCard label="Cancellations" value={cancelled} />
+        <MetricCard label="Returns" value={returned} />
+        <MetricCard label="Return rate" value={`${rows.data?.length ? Math.round((returned / rows.data.length) * 100) : 0}%`} />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader><CardTitle className="text-sm font-semibold">Monthly booking trend</CardTitle></CardHeader>
+          <CardContent className="h-72">
+            {monthlyTrend.length > 0 ? (
+              <Line
+                data={{
+                  labels: monthlyTrend.map(([m]) => format(new Date(`${m}-01`), "MMM yyyy")),
+                  datasets: [{ label: "Bookings", data: monthlyTrend.map(([, v]) => v), borderColor: "#6A1B9A", backgroundColor: "rgba(106,27,154,0.15)", fill: true, tension: 0.3 }],
+                }}
+                options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }}
+              />
+            ) : <div className="text-sm text-muted-foreground">No data in range.</div>}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader><CardTitle className="text-sm font-semibold">Equipment utilization (current)</CardTitle></CardHeader>
+          <CardContent className="h-72">
+            {utilization.data && utilization.data.total > 0 ? (
+              <Doughnut
+                data={{
+                  labels: [`Booked (${utilization.data.bookedPct}%)`, `Idle (${utilization.data.idlePct}%)`, `Maintenance (${utilization.data.maintenancePct}%)`],
+                  datasets: [{ data: [utilization.data.bookedCount, utilization.data.idleCount, utilization.data.maintenanceCount], backgroundColor: ["#EF4444", "#22C55E", "#94A3B8"] }],
+                }}
+                options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom" } } }}
+              />
+            ) : <div className="text-sm text-muted-foreground">No equipment yet.</div>}
+          </CardContent>
+        </Card>
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader><CardTitle className="text-sm font-semibold">Most used equipment</CardTitle></CardHeader>
           <CardContent className="h-72">
             {topEquipment.length > 0 && <Bar
-              data={{ labels: topEquipment.map(([k]) => k), datasets: [{ label: "Units booked", data: topEquipment.map(([,v]) => v), backgroundColor: "#6A1B9A", borderRadius: 4 }] }}
+              data={{ labels: topEquipment.map(([k]) => k), datasets: [{ label: "Units booked", data: topEquipment.map(([, v]) => v), backgroundColor: "#6A1B9A", borderRadius: 4 }] }}
               options={{ indexAxis: "y", responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }}
             />}
           </CardContent>
         </Card>
         <Card>
-          <CardHeader><CardTitle className="text-sm font-semibold">Department usage</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-sm font-semibold">Category-wise usage</CardTitle></CardHeader>
           <CardContent className="h-72">
-            {Object.keys(departmentUsage).length > 0 && <Doughnut
-              data={{ labels: Object.keys(departmentUsage), datasets: [{ data: Object.values(departmentUsage), backgroundColor: ["#6A1B9A","#9C27B0","#BA68C8","#4A148C","#7B1FA2","#AB47BC","#CE93D8"] }] }}
+            {categoryUsage.length > 0 && <Doughnut
+              data={{ labels: categoryUsage.map(([k]) => k), datasets: [{ data: categoryUsage.map(([, v]) => v), backgroundColor: CHART_COLORS }] }}
               options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom" } } }}
             />}
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader><CardTitle className="text-sm font-semibold">Department usage</CardTitle></CardHeader>
+        <CardContent className="h-72">
+          {departmentUsage.length > 0 && <Bar
+            data={{ labels: departmentUsage.map(([k]) => k), datasets: [{ label: "Bookings", data: departmentUsage.map(([, v]) => v), backgroundColor: "#6A1B9A", borderRadius: 4 }] }}
+            options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }}
+          />}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader><CardTitle className="text-sm font-semibold">Least used equipment</CardTitle></CardHeader>
@@ -157,5 +241,93 @@ function MetricCard({ label, value }: { label: string; value: string | number })
       <div className="text-xs uppercase tracking-wider text-muted-foreground">{label}</div>
       <div className="mt-2 text-2xl font-semibold">{value}</div>
     </CardContent></Card>
+  );
+}
+
+const REPORT_TYPE_LABELS: Record<ReportType, string> = {
+  equipment: "Equipment Report",
+  booking: "Booking Report",
+  user: "User Report",
+  utilization: "Utilization Report",
+};
+
+function ExportDialog({ filters }: { filters: ExportFilters }) {
+  const [open, setOpen] = useState(false);
+  const [format_, setFormat] = useState<"xlsx" | "csv">("xlsx");
+  const [selectedTypes, setSelectedTypes] = useState<ReportType[]>(["equipment", "booking", "user", "utilization"]);
+  const [csvType, setCsvType] = useState<ReportType>("booking");
+  const [busy, setBusy] = useState(false);
+
+  function toggleType(type: ReportType) {
+    setSelectedTypes((prev) => prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]);
+  }
+
+  async function runExport() {
+    setBusy(true);
+    try {
+      if (format_ === "xlsx") {
+        if (selectedTypes.length === 0) { toast.error("Select at least one report to include."); return; }
+        await exportReportsExcel(selectedTypes, filters);
+      } else {
+        await exportReportCsv(csvType, filters);
+      }
+      toast.success("Report exported");
+      setOpen(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Export failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild><Button><Download className="h-4 w-4 mr-2" /> Export Report</Button></DialogTrigger>
+      <DialogContent className="max-w-md">
+        <DialogHeader><DialogTitle>Export report</DialogTitle></DialogHeader>
+        <div className="space-y-4">
+          <div className="text-xs text-muted-foreground">Uses the filters currently set on this page (date range, department, category, equipment, user, status).</div>
+          <div className="space-y-1.5">
+            <Label>Format</Label>
+            <Select value={format_} onValueChange={(v) => setFormat(v as "xlsx" | "csv")}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="xlsx">Excel (.xlsx)</SelectItem>
+                <SelectItem value="csv">CSV</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {format_ === "xlsx" ? (
+            <div className="space-y-1.5">
+              <Label>Sheets to include</Label>
+              {(Object.keys(REPORT_TYPE_LABELS) as ReportType[]).map((type) => (
+                <label key={type} className="flex items-center gap-2 text-sm py-1">
+                  <Checkbox checked={selectedTypes.includes(type)} onCheckedChange={() => toggleType(type)} />
+                  {REPORT_TYPE_LABELS[type]}
+                </label>
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              <Label>Report</Label>
+              <Select value={csvType} onValueChange={(v) => setCsvType(v as ReportType)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(REPORT_TYPE_LABELS) as ReportType[]).map((type) => (
+                    <SelectItem key={type} value={type}>{REPORT_TYPE_LABELS[type]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="text-xs text-muted-foreground">CSV exports a single report at a time.</div>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button onClick={runExport} disabled={busy}>{busy && <Loader2 className="h-4 w-4 mr-2 animate-spin" />} Export</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

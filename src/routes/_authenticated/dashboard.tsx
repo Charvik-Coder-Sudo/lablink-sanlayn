@@ -1,17 +1,29 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useSessionUser } from "@/lib/use-session";
 import { highestRole } from "@/lib/session";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Boxes, CalendarCheck2, PackageCheck, Users, Activity, Clock } from "lucide-react";
-import { format } from "date-fns";
-import { Bar, Doughnut } from "react-chartjs-2";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { KpiCard } from "@/components/kpi-card";
 import {
-  Chart as ChartJS, ArcElement, BarElement, CategoryScale, LinearScale, Tooltip, Legend,
+  Boxes, CalendarCheck2, PackageCheck, Users, Activity, Clock, PackageX, AlertTriangle,
+  Wrench, ShieldAlert, CalendarClock, PackageOpen, Puzzle,
+} from "lucide-react";
+import { format, subMonths, startOfMonth } from "date-fns";
+import { Bar, Doughnut, Line } from "react-chartjs-2";
+import {
+  Chart as ChartJS, ArcElement, BarElement, CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend,
 } from "chart.js";
+import {
+  fetchDashboardKpis, fetchEquipmentUtilization, fetchBookingAnalyticsRows,
+  computeDepartmentUsage, computeCategoryUsage, computeTopEquipment, computeMonthlyTrend, computeBookingHeatmap,
+} from "@/lib/analytics";
 
-ChartJS.register(ArcElement, BarElement, CategoryScale, LinearScale, Tooltip, Legend);
+ChartJS.register(ArcElement, BarElement, CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend);
+
+const CHART_COLORS = ["#6A1B9A", "#9C27B0", "#BA68C8", "#4A148C", "#7B1FA2", "#8E24AA", "#AB47BC", "#CE93D8"];
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   component: DashboardPage,
@@ -31,6 +43,36 @@ function StatCard({ title, value, icon: Icon, hint }: { title: string; value: st
         {hint && <div className="mt-1 text-xs text-muted-foreground">{hint}</div>}
       </CardContent>
     </Card>
+  );
+}
+
+function BookingHeatmap({ matrix, dayLabels, maxValue }: { matrix: number[][]; dayLabels: string[]; maxValue: number }) {
+  function cellColor(count: number) {
+    if (count === 0 || maxValue === 0) return "bg-muted";
+    const intensity = count / maxValue;
+    if (intensity > 0.75) return "bg-primary";
+    if (intensity > 0.5) return "bg-primary/70";
+    if (intensity > 0.25) return "bg-primary/40";
+    return "bg-primary/20";
+  }
+
+  if (maxValue === 0) return <div className="text-sm text-muted-foreground">No bookings in range.</div>;
+
+  return (
+    <div className="min-w-[640px]">
+      <div className="grid grid-cols-[3rem_repeat(24,minmax(1.5rem,1fr))] gap-[3px] text-[10px] text-muted-foreground mb-1">
+        <div />
+        {Array.from({ length: 24 }, (_, h) => <div key={h} className="text-center">{h}</div>)}
+      </div>
+      {matrix.map((row, day) => (
+        <div key={day} className="grid grid-cols-[3rem_repeat(24,minmax(1.5rem,1fr))] gap-[3px] mb-[3px]">
+          <div className="text-[10px] text-muted-foreground flex items-center">{dayLabels[day]}</div>
+          {row.map((count, hour) => (
+            <div key={hour} className={`h-5 rounded-sm ${cellColor(count)}`} title={`${dayLabels[day]} ${hour}:00 — ${count} booking${count === 1 ? "" : "s"}`} />
+          ))}
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -153,6 +195,36 @@ function DashboardPage() {
     },
   });
 
+  const isAdminOrManager = role === "admin" || role === "manager";
+  const [trendMonths, setTrendMonths] = useState<"3" | "6" | "12">("6");
+  const analyticsFrom = format(startOfMonth(subMonths(new Date(), parseInt(trendMonths, 10) - 1)), "yyyy-MM-dd");
+
+  const kpis = useQuery({
+    queryKey: ["dashboard-kpis"],
+    enabled: isAdminOrManager,
+    refetchInterval: 60_000,
+    queryFn: () => fetchDashboardKpis(),
+  });
+
+  const utilization = useQuery({
+    queryKey: ["dashboard-utilization"],
+    enabled: isAdminOrManager,
+    refetchInterval: 60_000,
+    queryFn: () => fetchEquipmentUtilization(),
+  });
+
+  const analyticsRows = useQuery({
+    queryKey: ["dashboard-analytics-rows", analyticsFrom, today],
+    enabled: isAdminOrManager,
+    queryFn: () => fetchBookingAnalyticsRows({ from: analyticsFrom, to: today }),
+  });
+
+  const departmentUsage = useMemo(() => computeDepartmentUsage(analyticsRows.data ?? []), [analyticsRows.data]);
+  const categoryUsage = useMemo(() => computeCategoryUsage(analyticsRows.data ?? []), [analyticsRows.data]);
+  const topEquipment = useMemo(() => computeTopEquipment(analyticsRows.data ?? [], 10), [analyticsRows.data]);
+  const monthlyTrend = useMemo(() => computeMonthlyTrend(analyticsRows.data ?? []), [analyticsRows.data]);
+  const heatmap = useMemo(() => computeBookingHeatmap(analyticsRows.data ?? []), [analyticsRows.data]);
+
   return (
     <div className="space-y-6">
       <div className="flex items-end justify-between flex-wrap gap-2">
@@ -171,6 +243,113 @@ function DashboardPage() {
           ? <StatCard title="My Upcoming" value={stats.data?.myUpcoming.length ?? 0} icon={Clock} />
           : <StatCard title="Total Users" value={stats.data?.users ?? "—"} icon={Users} />}
       </div>
+
+      {isAdminOrManager && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <h2 className="text-lg font-semibold">Lab operations overview</h2>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
+            <KpiCard title="Total Equipment" value={kpis.data?.totalEquipment ?? "—"} icon={Boxes} to="/equipment" />
+            <KpiCard title="Available Equipment" value={kpis.data?.availableEquipment ?? "—"} icon={PackageCheck} to="/equipment" search={{ availability: "available" }} />
+            <KpiCard title="Currently Booked" value={kpis.data?.bookedEquipment ?? "—"} icon={CalendarCheck2} to="/equipment" search={{ availability: "booked" }} tone="warning" />
+            <KpiCard title="Overdue Equipment" value={kpis.data?.overdueEquipment ?? "—"} icon={AlertTriangle} to="/bookings" search={{ status: "booked" }} tone={((kpis.data?.overdueEquipment ?? 0) > 0) ? "danger" : "default"} />
+            <KpiCard title="Total Accessories" value={kpis.data?.totalAccessories ?? "—"} icon={Puzzle} to="/accessories" />
+            <KpiCard title="Active Users" value={kpis.data?.activeUsers ?? "—"} icon={Users} to="/admin/users" />
+            <KpiCard title="Today's Bookings" value={kpis.data?.todaysBookings ?? "—"} icon={CalendarCheck2} to="/bookings" />
+            <KpiCard title="Upcoming Bookings" value={kpis.data?.upcomingBookings ?? "—"} icon={CalendarClock} to="/bookings" />
+            <KpiCard title="Pending Returns" value={kpis.data?.pendingReturns ?? "—"} icon={PackageOpen} to="/bookings" search={{ status: "booked" }} tone={((kpis.data?.pendingReturns ?? 0) > 0) ? "warning" : "default"} />
+            <KpiCard title="Under Calibration" value={kpis.data?.underCalibration ?? "—"} icon={Wrench} to="/equipment" search={{ availability: "unavailable" }} />
+            <KpiCard title="Calibration Due (30d)" value={kpis.data?.dueForCalibration ?? "—"} icon={ShieldAlert} to="/equipment" tone={((kpis.data?.dueForCalibration ?? 0) > 0) ? "warning" : "default"} />
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader><CardTitle className="text-sm font-semibold">Equipment utilization</CardTitle></CardHeader>
+              <CardContent className="h-64">
+                {utilization.data && utilization.data.total > 0 ? (
+                  <Doughnut
+                    data={{
+                      labels: [`Booked (${utilization.data.bookedPct}%)`, `Idle (${utilization.data.idlePct}%)`, `Maintenance (${utilization.data.maintenancePct}%)`],
+                      datasets: [{ data: [utilization.data.bookedCount, utilization.data.idleCount, utilization.data.maintenanceCount], backgroundColor: ["#EF4444", "#22C55E", "#94A3B8"] }],
+                    }}
+                    options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom", labels: { font: { size: 11 } } } } }}
+                  />
+                ) : <div className="text-sm text-muted-foreground">No equipment yet.</div>}
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader><CardTitle className="text-sm font-semibold">Department-wise usage</CardTitle></CardHeader>
+              <CardContent className="h-64">
+                {departmentUsage.length > 0 ? (
+                  <Bar
+                    data={{ labels: departmentUsage.map(([k]) => k), datasets: [{ label: "Bookings", data: departmentUsage.map(([, v]) => v), backgroundColor: "#6A1B9A", borderRadius: 4 }] }}
+                    options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }}
+                  />
+                ) : <div className="text-sm text-muted-foreground">No bookings in range.</div>}
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle className="text-sm font-semibold">Monthly booking trend</CardTitle>
+                <Select value={trendMonths} onValueChange={(v) => setTrendMonths(v as typeof trendMonths)}>
+                  <SelectTrigger className="w-32 h-8 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="3">Last 3 months</SelectItem>
+                    <SelectItem value="6">Last 6 months</SelectItem>
+                    <SelectItem value="12">Last 12 months</SelectItem>
+                  </SelectContent>
+                </Select>
+              </CardHeader>
+              <CardContent className="h-64">
+                {monthlyTrend.length > 0 ? (
+                  <Line
+                    data={{
+                      labels: monthlyTrend.map(([m]) => format(new Date(`${m}-01`), "MMM yyyy")),
+                      datasets: [{ label: "Bookings", data: monthlyTrend.map(([, v]) => v), borderColor: "#6A1B9A", backgroundColor: "rgba(106,27,154,0.15)", fill: true, tension: 0.3 }],
+                    }}
+                    options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }}
+                  />
+                ) : <div className="text-sm text-muted-foreground">No bookings in range.</div>}
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader><CardTitle className="text-sm font-semibold">Category-wise equipment usage</CardTitle></CardHeader>
+              <CardContent className="h-64">
+                {categoryUsage.length > 0 ? (
+                  <Doughnut
+                    data={{ labels: categoryUsage.map(([k]) => k), datasets: [{ data: categoryUsage.map(([, v]) => v), backgroundColor: CHART_COLORS }] }}
+                    options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom", labels: { font: { size: 10 } } } } }}
+                  />
+                ) : <div className="text-sm text-muted-foreground">No bookings in range.</div>}
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader><CardTitle className="text-sm font-semibold">Frequently used equipment (top 10)</CardTitle></CardHeader>
+            <CardContent className="h-72">
+              {topEquipment.length > 0 ? (
+                <Bar
+                  data={{ labels: topEquipment.map(([k]) => k), datasets: [{ label: "Units booked", data: topEquipment.map(([, v]) => v), backgroundColor: "#6A1B9A", borderRadius: 4 }] }}
+                  options={{ indexAxis: "y", responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }}
+                />
+              ) : <div className="text-sm text-muted-foreground">No bookings in range.</div>}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader><CardTitle className="text-sm font-semibold">Booking density (day × hour)</CardTitle></CardHeader>
+            <CardContent className="overflow-x-auto">
+              <BookingHeatmap matrix={heatmap.matrix} dayLabels={heatmap.dayLabels} maxValue={heatmap.maxValue} />
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {(role === "manager" || role === "admin") && departmentStats.data && (
         <div className="grid gap-4 lg:grid-cols-2">
