@@ -382,7 +382,6 @@ function paint() {
 function EquipmentImportDialog({ onDone }: { onDone: () => void }) {
   const [open, setOpen] = useState(false);
   const [phase, setPhase] = useState<ImportPhase>("idle");
-  const [labLocation, setLabLocation] = useState("");
   const [sheetName, setSheetName] = useState("");
   const [previewRows, setPreviewRows] = useState<ParsedEquipmentRow[]>([]);
   const [validRows, setValidRows] = useState<ParsedEquipmentRow[]>([]);
@@ -424,10 +423,6 @@ function EquipmentImportDialog({ onDone }: { onDone: () => void }) {
   }
 
   async function runImport() {
-    if (!labLocation.trim()) {
-      toast.error("Set a default lab location before importing — the Excel sheet doesn't include one, and it's required by the existing schema.");
-      return;
-    }
     setPhase("uploading");
     setProgress({ done: 0, total: validRows.length });
     await paint();
@@ -440,7 +435,7 @@ function EquipmentImportDialog({ onDone }: { onDone: () => void }) {
       manufacturer: row.make || null,
       model: row.model || null,
       serial_number: row.device_serial_no,
-      lab_location: labLocation.trim(),
+      lab_location: "",
       total_quantity: row.qty ?? 0,
       remarks: buildRemarksWithCalibration(row),
     }));
@@ -478,15 +473,9 @@ function EquipmentImportDialog({ onDone }: { onDone: () => void }) {
             Expected columns: SL NO, Category, Description, Make, Model, Device SL No, Asset ID, Qty, Calibration date, Cal due date, Remarks.
             The sheet is matched by header name, not column position. Calibration dates are recorded in Remarks — the equipment table has no dedicated calibration columns.
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label>Excel file</Label>
-              <Input type="file" accept=".xlsx,.xls" onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Default lab location <span className="text-muted-foreground font-normal">(not in the sheet — applied to every imported row)</span></Label>
-              <Input value={labLocation} onChange={(e) => setLabLocation(e.target.value)} placeholder="e.g. Main Lab" />
-            </div>
+          <div className="space-y-1.5">
+            <Label>Excel file</Label>
+            <Input type="file" accept=".xlsx,.xls" onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} />
           </div>
 
           {busy && (
