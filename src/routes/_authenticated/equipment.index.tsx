@@ -10,12 +10,14 @@ import {
   parseEquipmentWorkbook, validateEquipmentRows, buildRemarksWithCalibration,
   type ParsedEquipmentRow, type RowValidationFailure,
 } from "@/lib/equipment-excel";
+import { extractSupabaseError } from "@/lib/supabase-errors";
 import { useSessionUser } from "@/lib/use-session";
 import { isPrivileged } from "@/lib/session";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
@@ -357,5 +359,273 @@ function EquipmentRowActions({ equipment, onDone }: { equipment: EquipmentInput 
         </AlertDialogContent>
       </AlertDialog>
     </>
+  );
+}
+
+type ImportPhase = "idle" | "reading" | "parsing" | "validating" | "ready" | "uploading" | "completed";
+
+const PHASE_LABEL: Record<ImportPhase, string> = {
+  idle: "",
+  reading: "Reading Excel…",
+  parsing: "Parsing…",
+  validating: "Validating…",
+  ready: "",
+  uploading: "Uploading…",
+  completed: "Completed",
+};
+
+// Let React flush the phase label to the DOM before the next (synchronous, CPU-bound) step runs.
+function paint() {
+  return new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+}
+
+function EquipmentImportDialog({ onDone }: { onDone: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [phase, setPhase] = useState<ImportPhase>("idle");
+  const [labLocation, setLabLocation] = useState("");
+  const [sheetName, setSheetName] = useState("");
+  const [previewRows, setPreviewRows] = useState<ParsedEquipmentRow[]>([]);
+  const [validRows, setValidRows] = useState<ParsedEquipmentRow[]>([]);
+  const [invalidRows, setInvalidRows] = useState<RowValidationFailure[]>([]);
+  const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [results, setResults] = useState<EquipmentImportResult[]>([]);
+
+  function reset() {
+    setPhase("idle"); setSheetName(""); setPreviewRows([]); setValidRows([]); setInvalidRows([]);
+    setProgress({ done: 0, total: 0 }); setResults([]);
+  }
+
+  async function onFile(file: File) {
+    reset();
+    try {
+      setPhase("reading");
+      await paint();
+      const parsed = await parseEquipmentWorkbook(file);
+
+      setPhase("parsing");
+      await paint();
+      setSheetName(parsed.sheetName);
+      setPreviewRows(parsed.rows);
+
+      setPhase("validating");
+      await paint();
+      const { valid, invalid } = validateEquipmentRows(parsed.rows);
+      setValidRows(valid);
+      setInvalidRows(invalid);
+
+      setPhase("ready");
+      toast.success(`Parsed ${parsed.rows.length} rows from "${parsed.sheetName}"`);
+    } catch (err) {
+      const info = extractSupabaseError(err);
+      toast.error(info.message);
+      console.error("[equipment import] parse failed:", info, err);
+      setPhase("idle");
+    }
+  }
+
+  async function runImport() {
+    if (!labLocation.trim()) {
+      toast.error("Set a default lab location before importing — the Excel sheet doesn't include one, and it's required by the existing schema.");
+      return;
+    }
+    setPhase("uploading");
+    setProgress({ done: 0, total: validRows.length });
+    await paint();
+
+    const payload: EquipmentImportRow[] = validRows.map((row) => ({
+      rowNumber: row.rowNumber,
+      equipment_code: row.asset_id,
+      name: row.description,
+      category: row.category,
+      manufacturer: row.make || null,
+      model: row.model || null,
+      serial_number: row.device_serial_no,
+      lab_location: labLocation.trim(),
+      total_quantity: row.qty ?? 0,
+      remarks: buildRemarksWithCalibration(row),
+    }));
+
+    const res = await bulkImportEquipment(payload, (done, total) => setProgress({ done, total }));
+    setResults(res);
+    setPhase("completed");
+    const imported = res.filter((r) => r.status === "imported").length;
+    toast.success(`Imported ${imported} of ${res.length} rows`);
+    onDone();
+  }
+
+  function downloadReport() {
+    const invalidAsResults = invalidRows.map((r) => ({ row: r.row, description: r.description, status: "skipped", reason: r.reason }));
+    const combined = [...results, ...invalidAsResults].sort((a, b) => a.row - b.row);
+    const ws = XLSX.utils.json_to_sheet(combined);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Import Report");
+    XLSX.writeFile(wb, `equipment_import_report_${Date.now()}.xlsx`);
+  }
+
+  const imported = results.filter((r) => r.status === "imported").length;
+  const failed = results.filter((r) => r.status === "failed").length;
+  const skipped = results.filter((r) => r.status === "skipped").length + invalidRows.length;
+  const duplicates = results.filter((r) => r.duplicate).length;
+  const busy = phase === "reading" || phase === "parsing" || phase === "validating" || phase === "uploading";
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) reset(); }}>
+      <DialogTrigger asChild><Button variant="outline"><UploadCloud className="h-4 w-4 mr-2" /> Import Excel</Button></DialogTrigger>
+      <DialogContent className="max-w-4xl">
+        <DialogHeader><DialogTitle>Import equipment from Excel</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          <div className="text-xs text-muted-foreground">
+            Expected columns: SL NO, Category, Description, Make, Model, Device SL No, Asset ID, Qty, Calibration date, Cal due date, Remarks.
+            The sheet is matched by header name, not column position. Calibration dates are recorded in Remarks — the equipment table has no dedicated calibration columns.
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>Excel file</Label>
+              <Input type="file" accept=".xlsx,.xls" onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Default lab location <span className="text-muted-foreground font-normal">(not in the sheet — applied to every imported row)</span></Label>
+              <Input value={labLocation} onChange={(e) => setLabLocation(e.target.value)} placeholder="e.g. Main Lab" />
+            </div>
+          </div>
+
+          {busy && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> {PHASE_LABEL[phase]}
+              {phase === "uploading" && progress.total > 0 && <span>— {progress.done} of {progress.total} rows</span>}
+            </div>
+          )}
+
+          {phase === "ready" && (
+            <>
+              <div className="flex items-center gap-3 text-sm">
+                <div>
+                  {previewRows.length} rows from <span className="font-medium">{sheetName}</span>
+                  {" · "}<span className="text-emerald-600 dark:text-emerald-400">{validRows.length} ready</span>
+                  {invalidRows.length > 0 && <> · <span className="text-destructive">{invalidRows.length} invalid</span></>}
+                </div>
+                <Button onClick={runImport} disabled={validRows.length === 0}>Run import</Button>
+              </div>
+
+              {invalidRows.length > 0 && (
+                <div className="max-h-40 overflow-y-auto border rounded-md border-destructive/40">
+                  <table className="w-full text-sm">
+                    <thead className="bg-destructive/10 text-xs uppercase text-muted-foreground sticky top-0">
+                      <tr><th className="text-left px-3 py-1.5">Row</th><th className="text-left px-3 py-1.5">Description</th><th className="text-left px-3 py-1.5">Reason</th></tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {invalidRows.map((r, i) => (
+                        <tr key={i}>
+                          <td className="px-3 py-1">{r.row}</td>
+                          <td className="px-3 py-1">{r.description}</td>
+                          <td className="px-3 py-1 text-destructive">{r.reason}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <div className="text-xs font-medium text-muted-foreground">Preview</div>
+              <div className="max-h-72 overflow-auto border rounded-md">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/50 uppercase text-muted-foreground sticky top-0">
+                    <tr>
+                      <th className="text-left px-2 py-1.5">SL NO</th>
+                      <th className="text-left px-2 py-1.5">Category</th>
+                      <th className="text-left px-2 py-1.5">Description</th>
+                      <th className="text-left px-2 py-1.5">Make</th>
+                      <th className="text-left px-2 py-1.5">Model</th>
+                      <th className="text-left px-2 py-1.5">Device SL No</th>
+                      <th className="text-left px-2 py-1.5">Asset ID</th>
+                      <th className="text-right px-2 py-1.5">Qty</th>
+                      <th className="text-left px-2 py-1.5">Calibration Date</th>
+                      <th className="text-left px-2 py-1.5">Calibration Due Date</th>
+                      <th className="text-left px-2 py-1.5">Remarks</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {previewRows.map((r) => (
+                      <tr key={r.rowNumber}>
+                        <td className="px-2 py-1">{r.sl_no}</td>
+                        <td className="px-2 py-1">{r.category || "—"}</td>
+                        <td className="px-2 py-1 max-w-[220px] truncate">{r.description || "—"}</td>
+                        <td className="px-2 py-1">{r.make || "—"}</td>
+                        <td className="px-2 py-1">{r.model || "—"}</td>
+                        <td className="px-2 py-1 font-mono">{r.device_serial_no || "—"}</td>
+                        <td className="px-2 py-1 font-mono">{r.asset_id || "—"}</td>
+                        <td className="px-2 py-1 text-right">{r.qty ?? "—"}</td>
+                        <td className="px-2 py-1">{r.calibration_date ?? "—"}</td>
+                        <td className="px-2 py-1">{r.calibration_due_date ?? "—"}</td>
+                        <td className="px-2 py-1 max-w-[160px] truncate">{r.remarks || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+
+          {phase === "completed" && (
+            <>
+              <div className="grid grid-cols-5 gap-2 text-center text-sm">
+                <div className="rounded-md border p-2"><div className="text-xs text-muted-foreground">Total</div><div className="text-lg font-semibold">{previewRows.length}</div></div>
+                <div className="rounded-md border p-2"><div className="text-xs text-muted-foreground">Imported</div><div className="text-lg font-semibold text-emerald-600 dark:text-emerald-400">{imported}</div></div>
+                <div className="rounded-md border p-2"><div className="text-xs text-muted-foreground">Skipped</div><div className="text-lg font-semibold text-amber-600 dark:text-amber-400">{skipped}</div></div>
+                <div className="rounded-md border p-2"><div className="text-xs text-muted-foreground">Failed</div><div className="text-lg font-semibold text-destructive">{failed}</div></div>
+                <div className="rounded-md border p-2"><div className="text-xs text-muted-foreground">Duplicates</div><div className="text-lg font-semibold">{duplicates}</div></div>
+              </div>
+              <div className="flex justify-end">
+                <Button variant="outline" size="sm" onClick={downloadReport}><Download className="h-4 w-4 mr-2" /> Download report</Button>
+              </div>
+              <div className="max-h-72 overflow-auto border rounded-md">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50 text-xs uppercase text-muted-foreground sticky top-0">
+                    <tr>
+                      <th className="text-left px-3 py-2">Row</th>
+                      <th className="text-left px-3 py-2">Description</th>
+                      <th className="text-left px-3 py-2">Status</th>
+                      <th className="text-left px-3 py-2">Error Code</th>
+                      <th className="text-left px-3 py-2">Message</th>
+                      <th className="text-left px-3 py-2">Details</th>
+                      <th className="text-left px-3 py-2">Hint</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {invalidRows.map((r, i) => (
+                      <tr key={`invalid-${i}`}>
+                        <td className="px-3 py-1.5">{r.row}</td>
+                        <td className="px-3 py-1.5">{r.description}</td>
+                        <td className="px-3 py-1.5"><Badge variant="destructive">skipped</Badge></td>
+                        <td className="px-3 py-1.5" />
+                        <td className="px-3 py-1.5 text-muted-foreground">{r.reason}</td>
+                        <td className="px-3 py-1.5" />
+                        <td className="px-3 py-1.5" />
+                      </tr>
+                    ))}
+                    {results.map((r, i) => (
+                      <tr key={`result-${i}`}>
+                        <td className="px-3 py-1.5">{r.row}</td>
+                        <td className="px-3 py-1.5">{r.description}</td>
+                        <td className="px-3 py-1.5">
+                          <Badge variant={r.status === "imported" ? "default" : r.status === "skipped" ? "secondary" : "destructive"}>{r.status}</Badge>
+                        </td>
+                        <td className="px-3 py-1.5 font-mono text-xs text-muted-foreground">{r.code ?? ""}</td>
+                        <td className="px-3 py-1.5 text-muted-foreground">{r.reason ?? r.message ?? ""}</td>
+                        <td className="px-3 py-1.5 text-muted-foreground">{r.details ?? ""}</td>
+                        <td className="px-3 py-1.5 text-muted-foreground">{r.hint ?? ""}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => setOpen(false)}>Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

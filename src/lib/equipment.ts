@@ -107,6 +107,7 @@ export async function bulkImportEquipment(
 
     if (dupReasons.length > 0) {
       results.push({ row: row.rowNumber, description: row.name, status: "skipped", duplicate: true, reason: dupReasons.join("; ") });
+      onProgress?.(results.length, rows.length);
       continue;
     }
     seenCodes.add(codeKey);
@@ -120,14 +121,15 @@ export async function bulkImportEquipment(
         const info = extractSupabaseError(error);
         console.error(`[equipment import] row ${rowNumber} insert error:`, info, error);
         results.push({ row: rowNumber, description: row.name, status: "failed", ...info });
-        continue;
+      } else {
+        results.push({ row: rowNumber, description: row.name, status: "imported" });
       }
-      results.push({ row: rowNumber, description: row.name, status: "imported" });
     } catch (err) {
       const info = extractSupabaseError(err);
       console.error(`[equipment import] row ${rowNumber} threw:`, info, err);
       results.push({ row: rowNumber, description: row.name, status: "failed", ...info });
     }
+    onProgress?.(results.length, rows.length);
   }
 
   await logAudit("equipment_imported", `Imported ${results.filter((r) => r.status === "imported").length} equipment items`, { total: results.length });
