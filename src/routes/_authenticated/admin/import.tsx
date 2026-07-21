@@ -40,6 +40,9 @@ function normalizeRow(row: RawRow): Record<string, unknown> {
     const key = HEADER_MAP[k.trim().toLowerCase()];
     if (!key) continue;
     if (key === "dob" && v instanceof Date) out[key] = v.toISOString().slice(0, 10);
+    // Excel turns numeric-looking phone cells into JS numbers; normalize to a trimmed string
+    // here (never a numeric operation) so a leading zero that's still present is preserved.
+    else if (key === "phone") out[key] = v == null ? "" : String(v).trim();
     else out[key] = typeof v === "string" ? v.trim() : v;
   }
   return out;
@@ -91,7 +94,7 @@ function ImportPage() {
       "Department": "R&D",
       "Designation": "Scientist",
       "DOB": "1994-05-14",
-      "Phone": "+91 9000000000",
+      "Phone": "9000000000",
     }];
     const ws = XLSX.utils.json_to_sheet(template);
     const wb = XLSX.utils.book_new();
@@ -113,6 +116,7 @@ function ImportPage() {
           <div className="text-xs text-muted-foreground">
             Columns: Employee Name, Company Email, Password, Employee ID, Department, Designation, DOB, Phone.
             Only <span className="font-medium">@sanlayan.com</span> emails are accepted. Duplicates are skipped.
+            Phone is optional but must be a plain 10-digit mobile number (e.g. 9000000000) if provided — format the column as Text in Excel to keep a leading zero.
           </div>
           {rows.length > 0 && (
             <div className="flex items-center gap-3">

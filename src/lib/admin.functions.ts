@@ -56,6 +56,17 @@ export const adminCreateUser = createServerFn({ method: "POST" })
     return { id: created.user?.id, email: created.user?.email };
   });
 
+// Excel coerces numeric-looking cells (phone numbers) to JS numbers, stripping any leading
+// zero in the process. Coerce back to a trimmed string before validating so a numeric cell
+// doesn't fail with a raw "expected string, received number" type error, then require a plain
+// 10-digit mobile number (blank stays optional).
+const phoneSchema = z.preprocess(
+  (value) => (value === null || value === undefined ? "" : String(value).trim()),
+  z.string(),
+).refine((v) => v === "" || /^\d{10}$/.test(v), {
+  message: "Invalid phone number. Expected a 10-digit mobile number.",
+}).transform((v) => (v === "" ? null : v));
+
 const importRowSchema = z.object({
   email: emailSchema,
   password: z.string().min(8),
@@ -63,7 +74,7 @@ const importRowSchema = z.object({
   employee_id: z.string().min(1),
   department: z.string().optional().nullable(),
   designation: z.string().optional().nullable(),
-  phone: z.string().optional().nullable(),
+  phone: phoneSchema.optional(),
   dob: z.string().optional().nullable(),
 });
 
@@ -104,7 +115,9 @@ export const adminBulkImportUsers = createServerFn({ method: "POST" })
         if (error) throw error;
         results.push({ row: i + 2, email: parsed.email, status: "created" });
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Invalid row";
+        const message = err instanceof z.ZodError
+          ? err.issues.map((issue) => issue.message).join("; ")
+          : err instanceof Error ? err.message : "Invalid row";
         const email = typeof raw.email === "string" ? raw.email : "";
         results.push({ row: i + 2, email, status: "error", message });
       }
