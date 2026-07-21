@@ -5,7 +5,7 @@ import { highestRole, isAdmin, isPrivileged, type AppRole } from "@/lib/session"
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
-  LayoutDashboard, Boxes, CalendarCheck2, BarChart3, Users, UploadCloud,
+  LayoutDashboard, Boxes, Wrench, CalendarCheck2, BarChart3, Users, UploadCloud,
   ClipboardList, User, LogOut, Menu,
 } from "lucide-react";
 import { useState } from "react";
@@ -26,6 +26,7 @@ type NavItem = { to: string; label: string; icon: React.ComponentType<{ classNam
 const NAV: NavItem[] = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { to: "/equipment", label: "Equipment", icon: Boxes },
+  { to: "/accessories", label: "Accessories", icon: Wrench },
   { to: "/bookings", label: "Bookings", icon: CalendarCheck2 },
   { to: "/reports", label: "Reports", icon: BarChart3, roles: ["admin", "manager"] },
   { to: "/admin/users", label: "Users", icon: Users, roles: ["admin"] },
