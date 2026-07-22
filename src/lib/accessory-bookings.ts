@@ -111,15 +111,3 @@ export async function markAccessoryBookingReturned(id: string, reason?: string) 
   if (error) throw error;
 }
 
-export async function accessoryDaySchedule(accessoryId: string, date: string) {
-  const { data, error } = await supabase
-    .from("accessory_bookings")
-    .select("id,booking_date,end_date,start_time,end_time,quantity,status,project_name,purpose,profile:profiles!accessory_bookings_user_profile_fk(full_name)")
-    .eq("accessory_id", accessoryId)
-    .lte("booking_date", date)
-    .gte("end_date", date)
-    .eq("status", "booked")
-    .order("start_time");
-  if (error) throw error;
-  return data ?? [];
-}

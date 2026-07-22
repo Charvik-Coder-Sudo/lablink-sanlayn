@@ -116,15 +116,3 @@ export async function markReturned(id: string, reason?: string) {
   if (error) throw error;
 }
 
-export async function equipmentDaySchedule(equipmentId: string, date: string) {
-  const { data, error } = await supabase
-    .from("bookings")
-    .select("id,booking_date,end_date,start_time,end_time,quantity,status,project_name,purpose,profile:profiles!bookings_user_profile_fk(full_name)")
-    .eq("equipment_id", equipmentId)
-    .lte("booking_date", date)
-    .gte("end_date", date)
-    .eq("status", "booked")
-    .order("start_time");
-  if (error) throw error;
-  return data ?? [];
-}

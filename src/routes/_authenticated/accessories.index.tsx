@@ -155,7 +155,7 @@ function AccessoriesListPage() {
                         )}
                         <div className="min-w-0">
                           <div className="text-[11px] text-muted-foreground">#{page * PAGE_SIZE + i + 1}</div>
-                          <div className="font-medium truncate">{a.description}</div>
+                          <Link to="/accessories/$id" params={{ id: a.id }} className="font-medium hover:text-primary block truncate">{a.description}</Link>
                           <div className="text-xs text-muted-foreground truncate">{a.make || "—"} {a.model || ""}</div>
                         </div>
                       </div>
@@ -229,9 +229,11 @@ function AccessoriesListPage() {
                             </div>
                           )}
                         </td>
-                        <td className="py-2.5 px-3 font-medium max-w-[280px]">{a.description}</td>
-                        <td className="py-2.5 px-3 text-muted-foreground">{a.make || "—"}</td>
-                        <td className="py-2.5 px-3 text-muted-foreground">{a.model || "—"}</td>
+                        <td className="py-2.5 px-3 font-medium max-w-[280px]">
+                          <Link to="/accessories/$id" params={{ id: a.id }} className="hover:text-primary">{a.description}</Link>
+                        </td>
+                        <td className="py-2.5 px-3 text-muted-foreground"><Link to="/accessories/$id" params={{ id: a.id }} className="hover:text-primary">{a.make || "—"}</Link></td>
+                        <td className="py-2.5 px-3 text-muted-foreground"><Link to="/accessories/$id" params={{ id: a.id }} className="hover:text-primary">{a.model || "—"}</Link></td>
                         <td className="py-2.5 px-3 font-mono text-xs text-muted-foreground">{a.serial_number || "—"}</td>
                         <td className="py-2.5 px-3 text-right">{a.quantity}</td>
                         <td className="py-2.5 px-3 text-muted-foreground max-w-[200px] truncate">{a.remarks || "—"}</td>

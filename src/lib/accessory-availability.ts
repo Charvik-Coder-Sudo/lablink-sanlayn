@@ -131,18 +131,4 @@ export function computeAccessoryAvailability(
   };
 }
 
-/** Units not currently tied up by an in-progress booking, right now. */
-export function computeAvailableAccessoryQuantity(
-  slots: AccessoryBookingSlot[],
-  totalQuantity: number,
-  now: Date = new Date(),
-): number {
-  const bookedNow = slots.reduce((sum, b) => {
-    const start = combineDateTime(b.booking_date, b.start_time);
-    const end = combineDateTime(b.end_date, b.end_time);
-    return start <= now && now < end ? sum + b.quantity : sum;
-  }, 0);
-  return Math.max(0, totalQuantity - bookedNow);
-}
-
 export type { AvailabilityState };

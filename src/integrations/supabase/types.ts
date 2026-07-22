@@ -414,6 +414,22 @@ export type Database = {
         }
         Returns: number
       }
+      accessory_booking_slots: {
+        Args: { _accessory_ids: string[]; _from: string; _to: string }
+        Returns: {
+          id: string
+          accessory_id: string
+          user_id: string
+          booking_date: string
+          end_date: string
+          start_time: string
+          end_time: string
+          quantity: number
+          project_name: string
+          full_name: string | null
+          department: string | null
+        }[]
+      }
       admin_update_accessory_booking: {
         Args: {
           _booking_date: string
@@ -525,6 +541,22 @@ export type Database = {
           _to_date: string
         }
         Returns: number
+      }
+      equipment_booking_slots: {
+        Args: { _equipment_ids: string[]; _from: string; _to: string }
+        Returns: {
+          id: string
+          equipment_id: string
+          user_id: string
+          booking_date: string
+          end_date: string
+          start_time: string
+          end_time: string
+          quantity: number
+          project_name: string
+          full_name: string | null
+          department: string | null
+        }[]
       }
       has_role: {
         Args: {

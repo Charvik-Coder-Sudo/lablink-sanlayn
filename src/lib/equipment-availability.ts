@@ -214,6 +214,7 @@ export function computeSlotAvailability(
     department: b.profile?.department ?? null,
     projectName: b.project_name,
     quantity: b.quantity,
+    fromLabel: formatSlotLabel(b.booking_date, b.start_time, now),
     returnsAtLabel: formatSlotLabel(b.end_date, b.end_time, now),
   }));
 
@@ -223,6 +224,105 @@ export function computeSlotAvailability(
     : undefined;
 
   return { state, totalQty: totalQuantity, availableQty, bookedQty, currentBookings, nextAvailableLabel };
+}
+
+// ============================================================================
+// Calendar helpers (shared by equipment + accessory detail calendars)
+// ============================================================================
+
+function minutesOf(timeStr: string): number {
+  const [h, m] = timeStr.split(":").map(Number);
+  return h * 60 + m;
+}
+
+export type DayState = "available" | "partial" | "booked" | "maintenance";
+
+/**
+ * Per-DAY availability colour for the calendar grid, from the peak concurrent booked
+ * quantity anywhere in that day: none booked → available (green); peak consumes every unit
+ * at some point → booked (red); otherwise some-but-not-all → partial (yellow).
+ */
+export function computeDayState(slots: SlotForAvailability[], totalQuantity: number, dateStr: string): DayState {
+  const dayBookings = slots.filter((s) => s.booking_date <= dateStr && s.end_date >= dateStr);
+  if (dayBookings.length === 0) return "available";
+
+  const dayStart = new Date(`${dateStr}T00:00:00`).getTime();
+  const dayEnd = new Date(`${dateStr}T23:59:59`).getTime();
+  const events: Array<[number, number]> = [];
+  for (const b of dayBookings) {
+    const s = Math.max(combineDateTime(b.booking_date, b.start_time).getTime(), dayStart);
+    const e = Math.min(combineDateTime(b.end_date, b.end_time).getTime(), dayEnd);
+    if (e <= s) continue;
+    events.push([s, b.quantity]);
+    events.push([e, -b.quantity]);
+  }
+  events.sort((a, b) => a[0] - b[0] || a[1] - b[1]); // ends (−) before starts (+) at a tie
+  let cur = 0, peak = 0;
+  for (const [, delta] of events) { cur += delta; if (cur > peak) peak = cur; }
+
+  if (peak >= totalQuantity) return "booked";
+  if (peak > 0) return "partial";
+  return "available";
+}
+
+export interface DaySegment {
+  fromLabel: string; // HH:MM
+  toLabel: string;
+  kind: "available" | "booked";
+  name?: string;
+  project?: string;
+}
+
+function fmtMin(min: number): string {
+  const h = Math.floor(min / 60), m = min % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+/**
+ * Time-ordered daily schedule for one date within lab hours: each booking as a "booked"
+ * segment (with borrower + project) and the free windows between them as "available"
+ * segments — the Google-Calendar-style day view.
+ */
+export function buildDaySchedule(
+  slots: SlotForAvailability[],
+  dateStr: string,
+  labStart: string,
+  labEnd: string,
+): DaySegment[] {
+  const ls = minutesOf(labStart), le = minutesOf(labEnd);
+  const day = slots.filter((s) => s.booking_date <= dateStr && s.end_date >= dateStr);
+
+  const blocks = day
+    .map((b) => {
+      const from = b.booking_date < dateStr ? ls : Math.max(ls, minutesOf(b.start_time));
+      const to = b.end_date > dateStr ? le : Math.min(le, minutesOf(b.end_time));
+      return { from, to, name: b.profile?.full_name ?? "Booked", project: b.project_name };
+    })
+    .filter((b) => b.to > b.from)
+    .sort((a, b) => a.from - b.from);
+
+  // Merge busy intervals to find the free gaps (where NO booking is active).
+  const merged: Array<[number, number]> = [];
+  for (const b of blocks) {
+    const last = merged[merged.length - 1];
+    if (last && b.from <= last[1]) last[1] = Math.max(last[1], b.to);
+    else merged.push([b.from, b.to]);
+  }
+  const gaps: DaySegment[] = [];
+  let cursor = ls;
+  for (const [f, t] of merged) {
+    if (f > cursor) gaps.push({ fromLabel: fmtMin(cursor), toLabel: fmtMin(f), kind: "available" });
+    cursor = Math.max(cursor, t);
+  }
+  if (cursor < le) gaps.push({ fromLabel: fmtMin(cursor), toLabel: fmtMin(le), kind: "available" });
+
+  const booked: DaySegment[] = blocks.map((b) => ({
+    fromLabel: fmtMin(b.from), toLabel: fmtMin(b.to), kind: "booked", name: b.name, project: b.project,
+  }));
+
+  return [...gaps, ...booked].sort(
+    (a, b) => minutesOf(a.fromLabel) - minutesOf(b.fromLabel) || (a.kind === "available" ? -1 : 1),
+  );
 }
 
 /** Units not currently tied up by an in-progress booking, right now. Equal to computeEquipmentAvailability(...).availableQty. */
