@@ -3,12 +3,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { cancelBooking, listBookings, markReturned } from "@/lib/bookings";
 import { useSessionUser } from "@/lib/use-session";
 import { isAdmin, isPrivileged } from "@/lib/session";
+import { invalidateBookingRelatedQueries } from "@/lib/query-invalidation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { useState } from "react";
 import { format, parseISO } from "date-fns";
@@ -55,24 +57,14 @@ function BookingsPage() {
     );
   });
 
-  function invalidateAvailability() {
-    // A cancelled/returned booking must free the equipment immediately everywhere its
-    // availability is shown, not just on this page — these caches would otherwise sit stale
-    // until their next 60s poll.
-    qc.invalidateQueries({ queryKey: ["bookings"] });
-    qc.invalidateQueries({ queryKey: ["equipment-booking-slots"] });
-    qc.invalidateQueries({ queryKey: ["schedule"] });
-    qc.invalidateQueries({ queryKey: ["avail"] });
-  }
-
   const cancel = useMutation({
     mutationFn: (id: string) => cancelBooking(id),
-    onSuccess: () => { toast.success("Booking cancelled"); invalidateAvailability(); },
+    onSuccess: () => { toast.success("Booking cancelled"); invalidateBookingRelatedQueries(qc); },
     onError: (e: Error) => toast.error(e.message),
   });
   const ret = useMutation({
     mutationFn: (id: string) => markReturned(id),
-    onSuccess: () => { toast.success("Marked returned"); invalidateAvailability(); },
+    onSuccess: () => { toast.success("Marked returned"); invalidateBookingRelatedQueries(qc); },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -83,6 +75,14 @@ function BookingsPage() {
     if (canManage) return true;
     if (b.user_id !== user?.id) return false;
     return new Date(`${b.booking_date}T${b.start_time}`) > new Date();
+  }
+
+  // A user can self-service "return" their own booking once it has started — no admin
+  // intervention required. Distinct from cancel, which only applies before the start time.
+  function canReturnEarly(b: { user_id: string; status: string; booking_date: string; start_time: string }) {
+    if (b.status !== "booked") return false;
+    if (b.user_id !== user?.id) return false;
+    return new Date(`${b.booking_date}T${b.start_time}`) <= new Date();
   }
 
   return (
@@ -140,9 +140,10 @@ function BookingsPage() {
                       {" · "}{b.start_time.slice(0,5)}–{b.end_time.slice(0,5)} · Qty {b.quantity}
                     </div>
                   </div>
-                  {(canManage || canCancel(b)) && (b.status === "booked") && (
+                  {(canManage || canCancel(b) || canReturnEarly(b)) && (b.status === "booked") && (
                     <div className="flex items-center gap-2 pt-1">
                       {canManage && <Button size="sm" variant="outline" className="flex-1" onClick={() => ret.mutate(b.id)}>Return</Button>}
+                      {!canManage && canReturnEarly(b) && <ReturnEarlyButton onConfirm={() => ret.mutate(b.id)} pending={ret.isPending} className="flex-1" />}
                       {canCancel(b) && <Button size="sm" variant="ghost" className="flex-1 text-destructive" onClick={() => cancel.mutate(b.id)}>Cancel</Button>}
                     </div>
                   )}
@@ -193,6 +194,9 @@ function BookingsPage() {
                     {canManage && b.status === "booked" && (
                       <Button size="sm" variant="outline" onClick={() => ret.mutate(b.id)}>Return</Button>
                     )}
+                    {!canManage && canReturnEarly(b) && (
+                      <ReturnEarlyButton onConfirm={() => ret.mutate(b.id)} pending={ret.isPending} />
+                    )}
                     {canCancel(b) && (
                       <Button size="sm" variant="ghost" className="text-destructive" onClick={() => cancel.mutate(b.id)}>Cancel</Button>
                     )}
@@ -206,5 +210,27 @@ function BookingsPage() {
         </>
       )}
     </div>
+  );
+}
+
+function ReturnEarlyButton({ onConfirm, pending, className }: { onConfirm: () => void; pending: boolean; className?: string }) {
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button size="sm" variant="outline" className={className} disabled={pending}>Return Early</Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Return this booking now?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This ends your booking before its scheduled time and frees the equipment for others immediately. This cannot be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={onConfirm}>Return now</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }

@@ -5,26 +5,35 @@ import {
   listEquipment, createEquipment, updateEquipment, deleteEquipment, bulkImportEquipment,
   type EquipmentInput, type EquipmentImportRow, type EquipmentImportResult,
 } from "@/lib/equipment";
-import { fetchEquipmentBookingSlots, computeEquipmentAvailability, type AvailabilityState, type EquipmentAvailability } from "@/lib/equipment-availability";
+import {
+  fetchEquipmentBookingSlots, computeEquipmentAvailability, computeAvailableQuantity,
+  type AvailabilityState, type EquipmentAvailability,
+} from "@/lib/equipment-availability";
 import {
   parseEquipmentWorkbook, validateEquipmentRows,
   type ParsedEquipmentRow, type RowValidationFailure,
 } from "@/lib/equipment-excel";
+import { listBookings, markReturned } from "@/lib/bookings";
+import { invalidateBookingRelatedQueries } from "@/lib/query-invalidation";
 import { extractSupabaseError } from "@/lib/supabase-errors";
 import { useSessionUser } from "@/lib/use-session";
 import { isPrivileged } from "@/lib/session";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Search, Pencil, Trash2, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, ArrowUpDown, UploadCloud, Loader2, Download, SlidersHorizontal } from "lucide-react";
+import {
+  Plus, Search, Pencil, Trash2, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, ArrowUpDown,
+  UploadCloud, Loader2, Download, SlidersHorizontal, CalendarClock, User as UserIcon,
+} from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
+import { format, parseISO } from "date-fns";
 import * as XLSX from "xlsx";
 
 interface EquipmentSearch {
@@ -44,7 +53,7 @@ const PAGE_SIZE = 20;
 const FETCH_LIMIT = 1000;
 
 type EquipmentRow = EquipmentInput & { id: string };
-type EnrichedRow = EquipmentRow & { availability: EquipmentAvailability };
+type EnrichedRow = EquipmentRow & { availability: EquipmentAvailability; availableQty: number };
 
 type SortKey = "category" | "name" | "manufacturer" | "model" | "serial_number" | "equipment_code" | "total_quantity" | "status";
 
@@ -102,10 +111,12 @@ function EquipmentListPage() {
   });
 
   const enriched: EnrichedRow[] = useMemo(() => rows.map((e) => {
+    const slots = bookingSlots.data?.[e.id] ?? [];
     const availability: EquipmentAvailability = e.status !== "active"
       ? { state: "unavailable", reasonLabel: e.status === "maintenance" ? "Under maintenance" : "Retired" }
-      : computeEquipmentAvailability(bookingSlots.data?.[e.id] ?? [], e.total_quantity);
-    return { ...e, availability };
+      : computeEquipmentAvailability(slots, e.total_quantity);
+    const availableQty = e.status !== "active" ? 0 : computeAvailableQuantity(slots, e.total_quantity);
+    return { ...e, availability, availableQty };
   }), [rows, bookingSlots.data]);
 
   const filtered = useMemo(() => enriched.filter((e) => {
@@ -163,6 +174,8 @@ function EquipmentListPage() {
         )}
       </div>
 
+      <MyActiveBookingsWidget />
+
       <Card>
         <CardContent className="p-4 flex flex-wrap gap-3">
           <div className="flex gap-2 w-full sm:w-auto sm:flex-1">
@@ -213,7 +226,8 @@ function EquipmentListPage() {
           <div className="md:hidden space-y-3">
             {pageRows.map((e, i) => {
               const cfg = STATUS_CONFIG[e.availability.state];
-              const bookingDisabled = e.availability.state === "booked" || e.availability.state === "unavailable";
+              const isMine = e.availability.state === "booked" && e.availability.bookedBy?.userId === user?.id;
+              const bookingDisabled = (e.availability.state === "booked" && !isMine) || e.availability.state === "unavailable";
               return (
                 <Card key={e.id}>
                   <CardContent className="p-4 space-y-2.5">
@@ -225,28 +239,37 @@ function EquipmentListPage() {
                       </div>
                       <span className={cn("inline-flex items-center gap-1.5 text-xs font-medium whitespace-nowrap shrink-0", cfg.text)}>
                         <span className={cn("h-2 w-2 rounded-full shrink-0", cfg.dot)} />
-                        {cfg.label}
+                        {isMine ? "My Booking" : cfg.label}
                       </span>
                     </div>
                     <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-muted-foreground">
                       <div><span className="text-foreground font-medium">Asset ID:</span> {e.equipment_code}</div>
-                      <div><span className="text-foreground font-medium">Qty:</span> {e.total_quantity}</div>
+                      <div><span className="text-foreground font-medium">Available:</span> {e.availableQty} / {e.total_quantity}</div>
                       <div className="col-span-2 truncate"><span className="text-foreground font-medium">Serial:</span> {e.serial_number || "—"}</div>
                       {e.calibration_due_date && (
                         <div className={cn("col-span-2", e.calibration_due_date < todayStr ? "text-destructive font-medium" : "")}>
                           <span className="text-foreground font-medium">Cal. due:</span> {e.calibration_due_date}
                         </div>
                       )}
-                      {e.availability.state === "booked" && e.availability.bookedBy && (
-                        <div className="col-span-2 truncate"><span className="text-foreground font-medium">Booked by:</span> {e.availability.bookedBy.name}</div>
+                      {e.availability.state === "booked" && e.availability.bookedBy && !isMine && (
+                        <>
+                          <div className="col-span-2 truncate"><span className="text-foreground font-medium">Booked by:</span> {e.availability.bookedBy.name}</div>
+                          {e.availability.bookedBy.department && <div className="col-span-2"><span className="text-foreground font-medium">Department:</span> {e.availability.bookedBy.department}</div>}
+                          {e.availability.availableAtLabel && <div className="col-span-2"><span className="text-foreground font-medium">Available again:</span> {e.availability.availableAtLabel}</div>}
+                        </>
+                      )}
+                      {e.availability.state === "reserved" && e.availability.reservedFromLabel && (
+                        <div className="col-span-2"><span className="text-foreground font-medium">Reserved from:</span> {e.availability.reservedFromLabel}</div>
                       )}
                     </div>
                     <div className="flex items-center gap-2 pt-1">
                       <Link to="/equipment/$id" params={{ id: e.id }} className="flex-1">
                         <Button size="sm" variant="ghost" className="w-full">Details</Button>
                       </Link>
-                      {bookingDisabled ? (
-                        <Button size="sm" variant="outline" className="flex-1" disabled>Book</Button>
+                      {isMine && e.availability.bookedBy ? (
+                        <ReturnEarlyButton bookingId={e.availability.bookedBy.bookingId} className="flex-1" />
+                      ) : bookingDisabled ? (
+                        <Button size="sm" variant="outline" className="flex-1" disabled>{e.availability.state === "unavailable" ? "Unavailable" : "Booked"}</Button>
                       ) : (
                         <Link to="/equipment/$id" params={{ id: e.id }} className="flex-1">
                           <Button size="sm" variant="outline" className="w-full">Book</Button>
@@ -275,6 +298,7 @@ function EquipmentListPage() {
                     <SortableHeader label="Device Serial No." sortKeyValue="serial_number" />
                     <SortableHeader label="Asset ID" sortKeyValue="equipment_code" />
                     <SortableHeader label="Qty" sortKeyValue="total_quantity" align="right" />
+                    <th className="py-2.5 px-3 font-medium text-right whitespace-nowrap">Available</th>
                     <th className="py-2.5 px-3 font-medium text-left whitespace-nowrap">Calibration Date</th>
                     <th className="py-2.5 px-3 font-medium text-left whitespace-nowrap">Calibration Due</th>
                     <SortableHeader label="Status" sortKeyValue="status" />
@@ -286,7 +310,8 @@ function EquipmentListPage() {
                 <tbody className="divide-y">
                   {pageRows.map((e, i) => {
                     const cfg = STATUS_CONFIG[e.availability.state];
-                    const bookingDisabled = e.availability.state === "booked" || e.availability.state === "unavailable";
+                    const isMine = e.availability.state === "booked" && e.availability.bookedBy?.userId === user?.id;
+                    const bookingDisabled = (e.availability.state === "booked" && !isMine) || e.availability.state === "unavailable";
                     return (
                       <tr key={e.id} className="hover:bg-muted/30 transition-colors">
                         <td className="py-2.5 px-3 text-muted-foreground">{page * PAGE_SIZE + i + 1}</td>
@@ -299,6 +324,7 @@ function EquipmentListPage() {
                         <td className="py-2.5 px-3 font-mono text-xs text-muted-foreground">{e.serial_number || "—"}</td>
                         <td className="py-2.5 px-3 font-mono text-xs">{e.equipment_code}</td>
                         <td className="py-2.5 px-3 text-right">{e.total_quantity}</td>
+                        <td className="py-2.5 px-3 text-right font-medium">{e.availableQty}</td>
                         <td className="py-2.5 px-3 text-muted-foreground">{e.calibration_date || "—"}</td>
                         <td className={cn("py-2.5 px-3", e.calibration_due_date && e.calibration_due_date < todayStr ? "text-destructive font-medium" : "text-muted-foreground")}>
                           {e.calibration_due_date || "—"}
@@ -306,7 +332,7 @@ function EquipmentListPage() {
                         <td className="py-2.5 px-3">
                           <span className={cn("inline-flex items-center gap-1.5 font-medium whitespace-nowrap", cfg.text)}>
                             <span className={cn("h-2 w-2 rounded-full shrink-0", cfg.dot)} />
-                            {cfg.label}
+                            {isMine ? "My Booking" : cfg.label}
                           </span>
                         </td>
                         <td className="py-2.5 px-3 text-muted-foreground whitespace-nowrap">
@@ -326,8 +352,10 @@ function EquipmentListPage() {
                             <Link to="/equipment/$id" params={{ id: e.id }}>
                               <Button size="sm" variant="ghost">Details</Button>
                             </Link>
-                            {bookingDisabled ? (
-                              <Button size="sm" variant="outline" disabled>Book</Button>
+                            {isMine && e.availability.bookedBy ? (
+                              <ReturnEarlyButton bookingId={e.availability.bookedBy.bookingId} />
+                            ) : bookingDisabled ? (
+                              <Button size="sm" variant="outline" disabled>{e.availability.state === "unavailable" ? "Unavailable" : "Booked"}</Button>
                             ) : (
                               <Link to="/equipment/$id" params={{ id: e.id }}>
                                 <Button size="sm" variant="outline">Book</Button>
@@ -444,6 +472,100 @@ function EquipmentRowActions({ equipment, onDone }: { equipment: EquipmentInput 
         </AlertDialogContent>
       </AlertDialog>
     </>
+  );
+}
+
+function ReturnEarlyButton({ bookingId, className }: { bookingId: string; className?: string }) {
+  const qc = useQueryClient();
+  const ret = useMutation({
+    mutationFn: () => markReturned(bookingId),
+    onSuccess: () => { toast.success("Marked returned — equipment is now available"); invalidateBookingRelatedQueries(qc); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button size="sm" variant="outline" className={className} disabled={ret.isPending}>Return Early</Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Return this booking now?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This ends your booking before its scheduled time and frees the equipment for others immediately. This cannot be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={() => ret.mutate()}>Return now</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+function MyActiveBookingsWidget() {
+  const { data: user } = useSessionUser();
+  const qc = useQueryClient();
+  const q = useQuery({
+    queryKey: ["my-active-bookings", user?.id],
+    queryFn: () => listBookings({ scope: "mine", status: "booked", limit: 100 }),
+    enabled: !!user,
+  });
+
+  const now = new Date();
+  const active = (q.data?.rows ?? []).filter((b) => new Date(`${b.booking_date}T${b.start_time}`) <= now);
+
+  const ret = useMutation({
+    mutationFn: (id: string) => markReturned(id),
+    onSuccess: () => { toast.success("Marked returned — equipment is now available"); invalidateBookingRelatedQueries(qc); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  if (active.length === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-2"><CalendarClock className="h-4 w-4" /> My Active Bookings</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {active.map((b) => (
+          <div key={b.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-sm">
+            <div className="min-w-0">
+              <div className="font-medium truncate">{b.equipment?.name ?? "—"}</div>
+              <div className="text-xs text-muted-foreground flex items-center gap-1 flex-wrap">
+                <UserIcon className="h-3 w-3" />
+                {format(parseISO(b.booking_date), "d MMM yyyy")} {b.start_time.slice(0, 5)}–{b.end_time.slice(0, 5)} · Qty {b.quantity}
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {b.equipment_id && (
+                <Link to="/equipment/$id" params={{ id: b.equipment_id }}>
+                  <Button size="sm" variant="ghost">View</Button>
+                </Link>
+              )}
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button size="sm" variant="outline" disabled={ret.isPending}>Return Early</Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Return this booking now?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This ends your booking before its scheduled time and frees the equipment for others immediately. This cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => ret.mutate(b.id)}>Return now</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   );
 }
 

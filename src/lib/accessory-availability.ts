@@ -3,7 +3,9 @@ import { supabase } from "@/integrations/supabase/client";
 import type { AvailabilityState, EquipmentAvailability } from "./equipment-availability";
 
 export interface AccessoryBookingSlot {
+  id: string;
   accessory_id: string;
+  user_id: string;
   booking_date: string;
   end_date: string;
   start_time: string;
@@ -42,7 +44,7 @@ export async function fetchAccessoryBookingSlots(
 
   const { data, error } = await supabase
     .from("accessory_bookings")
-    .select("accessory_id,booking_date,end_date,start_time,end_time,quantity,profile:profiles!accessory_bookings_user_profile_fk(full_name,department)")
+    .select("id,accessory_id,user_id,booking_date,end_date,start_time,end_time,quantity,profile:profiles!accessory_bookings_user_profile_fk(full_name,department)")
     .in("accessory_id", accessoryIds)
     .eq("status", "booked")
     .lte("booking_date", tomorrowStr)
@@ -76,7 +78,7 @@ export function computeAccessoryAvailability(
     )[0];
     return {
       state: "booked",
-      bookedBy: { name: soonest.profile?.full_name ?? "Unknown", department: soonest.profile?.department ?? null },
+      bookedBy: { userId: soonest.user_id, bookingId: soonest.id, name: soonest.profile?.full_name ?? "Unknown", department: soonest.profile?.department ?? null },
       availableAtLabel: formatSlotLabel(soonest.end_date, soonest.end_time, now),
     };
   }
@@ -90,6 +92,20 @@ export function computeAccessoryAvailability(
   }
 
   return { state: "available" };
+}
+
+/** Units not currently tied up by an in-progress booking, right now. */
+export function computeAvailableAccessoryQuantity(
+  slots: AccessoryBookingSlot[],
+  totalQuantity: number,
+  now: Date = new Date(),
+): number {
+  const bookedNow = slots.reduce((sum, b) => {
+    const start = combineDateTime(b.booking_date, b.start_time);
+    const end = combineDateTime(b.end_date, b.end_time);
+    return start <= now && now < end ? sum + b.quantity : sum;
+  }, 0);
+  return Math.max(0, totalQuantity - bookedNow);
 }
 
 export type { AvailabilityState };
