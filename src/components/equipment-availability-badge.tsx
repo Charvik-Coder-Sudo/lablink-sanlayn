@@ -1,40 +1,40 @@
 import { cn } from "@/lib/utils";
 import type { EquipmentAvailability } from "@/lib/equipment-availability";
 
-const CONFIG: Record<EquipmentAvailability["state"], { dot: string; text: string; label: string }> = {
-  available: { dot: "bg-emerald-500", text: "text-emerald-700 dark:text-emerald-400", label: "Available" },
-  booked: { dot: "bg-red-500", text: "text-red-700 dark:text-red-400", label: "Currently Booked" },
-  reserved: { dot: "bg-amber-500", text: "text-amber-700 dark:text-amber-400", label: "Reserved" },
-  unavailable: { dot: "bg-muted-foreground", text: "text-muted-foreground", label: "Unavailable" },
+export const AVAILABILITY_CONFIG: Record<EquipmentAvailability["state"], { dot: string; text: string; emoji: string; label: (a: EquipmentAvailability) => string }> = {
+  available: { dot: "bg-emerald-500", text: "text-emerald-700 dark:text-emerald-400", emoji: "🟢", label: () => "Available" },
+  limited: { dot: "bg-amber-500", text: "text-amber-700 dark:text-amber-400", emoji: "🟡", label: (a) => `Available (${a.availableQty} Left)` },
+  fully_booked: { dot: "bg-red-500", text: "text-red-700 dark:text-red-400", emoji: "🔴", label: () => "Fully Booked" },
+  unavailable: { dot: "bg-slate-500", text: "text-muted-foreground", emoji: "⚫", label: () => "Under Maintenance" },
 };
 
 export function EquipmentAvailabilityBadge({ availability }: { availability: EquipmentAvailability }) {
-  const cfg = CONFIG[availability.state];
+  const cfg = AVAILABILITY_CONFIG[availability.state];
   return (
     <div className="space-y-1">
       <div className={cn("inline-flex items-center gap-1.5 text-sm font-semibold", cfg.text)}>
         <span className={cn("h-2 w-2 rounded-full shrink-0", cfg.dot)} />
-        {cfg.label}
+        {cfg.label(availability)}
       </div>
-      <div className="text-xs text-muted-foreground leading-relaxed">
-        {availability.state === "available" && "Available Now"}
-        {availability.state === "booked" && availability.bookedBy && (
-          <div className="space-y-0.5">
-            <div>
-              <span className="font-medium text-foreground">Booked By:</span> {availability.bookedBy.name}
-              {availability.bookedBy.department ? ` (${availability.bookedBy.department})` : ""}
-            </div>
-            <div>
-              <span className="font-medium text-foreground">Available At:</span> {availability.availableAtLabel}
-            </div>
-          </div>
-        )}
-        {availability.state === "reserved" && (
-          <div>
-            <span className="font-medium text-foreground">Reserved From:</span> {availability.reservedFromLabel}
+      <div className="text-xs text-muted-foreground leading-relaxed space-y-1">
+        {availability.currentBookings.length > 0 && (
+          <div className="space-y-1">
+            {availability.currentBookings.map((b) => (
+              <div key={b.bookingId}>
+                <span className="font-medium text-foreground">Booked by:</span> {b.name}
+                {b.department ? ` (${b.department})` : ""}
+                {" · "}<span className="font-medium text-foreground">Project:</span> {b.projectName}
+                {" · "}<span className="font-medium text-foreground">Returns:</span> {b.returnsAtLabel}
+              </div>
+            ))}
           </div>
         )}
         {availability.state === "unavailable" && availability.reasonLabel}
+        {availability.nextReservation && availability.state !== "unavailable" && (
+          <div>
+            <span className="font-medium text-foreground">Next reservation:</span> {availability.nextReservation.fromLabel} ({availability.nextReservation.name})
+          </div>
+        )}
       </div>
     </div>
   );

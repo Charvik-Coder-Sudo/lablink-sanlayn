@@ -7,8 +7,11 @@ import {
 } from "@/lib/accessories";
 import { extractSupabaseError } from "@/lib/supabase-errors";
 import { fetchAccessoryBookingSlots, computeAccessoryAvailability } from "@/lib/accessory-availability";
+import { markAccessoryBookingReturned } from "@/lib/accessory-bookings";
+import { invalidateBookingRelatedQueries } from "@/lib/query-invalidation";
 import { parseAccessoriesWorkbook, validateAccessoryRows, type ParsedAccessoryRow, type RowValidationFailure } from "@/lib/accessory-excel";
 import type { AvailabilityState, EquipmentAvailability } from "@/lib/equipment-availability";
+import { AVAILABILITY_CONFIG } from "@/components/equipment-availability-badge";
 import { useSessionUser } from "@/lib/use-session";
 import { isPrivileged } from "@/lib/session";
 import { cn } from "@/lib/utils";
@@ -33,13 +36,6 @@ const FETCH_LIMIT = 1000;
 
 type AccessoryRow = AccessoryInput & { id: string; photo_url: string | null };
 type EnrichedRow = AccessoryRow & { availability: EquipmentAvailability };
-
-const STATUS_CONFIG: Record<AvailabilityState, { dot: string; text: string; label: string }> = {
-  available: { dot: "bg-emerald-500", text: "text-emerald-700 dark:text-emerald-400", label: "Available" },
-  booked: { dot: "bg-red-500", text: "text-red-700 dark:text-red-400", label: "Booked" },
-  reserved: { dot: "bg-amber-500", text: "text-amber-700 dark:text-amber-400", label: "Reserved" },
-  unavailable: { dot: "bg-slate-400", text: "text-muted-foreground", label: "Under Maintenance" },
-};
 
 function AccessoriesListPage() {
   const { data: user } = useSessionUser();
@@ -67,7 +63,7 @@ function AccessoriesListPage() {
 
   const enriched: EnrichedRow[] = useMemo(() => rows.map((a) => {
     const availability: EquipmentAvailability = a.status !== "active"
-      ? { state: "unavailable", reasonLabel: a.status === "maintenance" ? "Under maintenance" : "Retired" }
+      ? { state: "unavailable", totalQty: a.quantity, availableQty: 0, currentBookings: [], reasonLabel: a.status === "maintenance" ? "Under maintenance" : "Retired" }
       : computeAccessoryAvailability(bookingSlots.data?.[a.id] ?? [], a.quantity);
     return { ...a, availability };
   }), [rows, bookingSlots.data]);
@@ -122,10 +118,10 @@ function AccessoriesListPage() {
               <SelectTrigger className="w-full sm:w-48"><SelectValue placeholder="Availability" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All availability</SelectItem>
-                <SelectItem value="available">Available</SelectItem>
-                <SelectItem value="booked">Booked</SelectItem>
-                <SelectItem value="reserved">Reserved</SelectItem>
-                <SelectItem value="unavailable">Under maintenance</SelectItem>
+                <SelectItem value="available">🟢 Available</SelectItem>
+                <SelectItem value="limited">🟡 Limited</SelectItem>
+                <SelectItem value="fully_booked">🔴 Fully Booked</SelectItem>
+                <SelectItem value="unavailable">⚫ Under maintenance</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -141,8 +137,10 @@ function AccessoriesListPage() {
           {/* Mobile: card list (no horizontal scrolling) */}
           <div className="md:hidden space-y-3">
             {pageRows.map((a, i) => {
-              const cfg = STATUS_CONFIG[a.availability.state];
-              const bookingDisabled = a.availability.state === "booked" || a.availability.state === "unavailable";
+              const cfg = AVAILABILITY_CONFIG[a.availability.state];
+              const mine = a.availability.currentBookings.find((b) => b.userId === user?.id);
+              const bookingDisabled = (a.availability.state === "fully_booked" && !mine) || a.availability.state === "unavailable";
+              const othersBooked = a.availability.currentBookings.filter((b) => b.userId !== user?.id);
               return (
                 <Card key={a.id}>
                   <CardContent className="p-4 space-y-2.5">
@@ -163,22 +161,24 @@ function AccessoriesListPage() {
                       </div>
                       <span className={cn("inline-flex items-center gap-1.5 text-xs font-medium whitespace-nowrap shrink-0", cfg.text)}>
                         <span className={cn("h-2 w-2 rounded-full shrink-0", cfg.dot)} />
-                        {cfg.label}
+                        {mine ? "My Booking" : cfg.label(a.availability)}
                       </span>
                     </div>
                     <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-muted-foreground">
                       <div className="truncate"><span className="text-foreground font-medium">Serial:</span> {a.serial_number || "—"}</div>
                       <div><span className="text-foreground font-medium">Qty:</span> {a.quantity}</div>
-                      {a.availability.state === "booked" && a.availability.bookedBy && (
-                        <div className="col-span-2 truncate"><span className="text-foreground font-medium">Booked by:</span> {a.availability.bookedBy.name}</div>
+                      {othersBooked.length > 0 && (
+                        <div className="col-span-2 truncate"><span className="text-foreground font-medium">Booked by:</span> {othersBooked[0].name}{othersBooked.length > 1 ? ` +${othersBooked.length - 1} more` : ""} · Returns {othersBooked[0].returnsAtLabel}</div>
                       )}
-                      {a.availability.state === "reserved" && (
-                        <div className="col-span-2"><span className="text-foreground font-medium">Reserved from:</span> {a.availability.reservedFromLabel}</div>
+                      {a.availability.nextReservation && (
+                        <div className="col-span-2"><span className="text-foreground font-medium">Next reservation:</span> {a.availability.nextReservation.fromLabel}</div>
                       )}
                     </div>
                     <div className="flex items-center gap-2 pt-1">
-                      {bookingDisabled ? (
-                        <Button size="sm" variant="outline" className="flex-1" disabled>Book</Button>
+                      {mine ? (
+                        <AccessoryReturnEarlyButton bookingId={mine.bookingId} className="flex-1" />
+                      ) : bookingDisabled ? (
+                        <Button size="sm" variant="outline" className="flex-1" disabled>{a.availability.state === "unavailable" ? "Unavailable" : "Fully Booked"}</Button>
                       ) : (
                         <Link to="/accessories/$id" params={{ id: a.id }} className="flex-1">
                           <Button size="sm" variant="outline" className="w-full">Book</Button>
@@ -213,8 +213,10 @@ function AccessoriesListPage() {
                 </thead>
                 <tbody className="divide-y">
                   {pageRows.map((a, i) => {
-                    const cfg = STATUS_CONFIG[a.availability.state];
-                    const bookingDisabled = a.availability.state === "booked" || a.availability.state === "unavailable";
+                    const cfg = AVAILABILITY_CONFIG[a.availability.state];
+                    const mine = a.availability.currentBookings.find((b) => b.userId === user?.id);
+                    const bookingDisabled = (a.availability.state === "fully_booked" && !mine) || a.availability.state === "unavailable";
+                    const othersBooked = a.availability.currentBookings.filter((b) => b.userId !== user?.id);
                     return (
                       <tr key={a.id} className="hover:bg-muted/30 transition-colors">
                         <td className="py-2.5 px-3 text-muted-foreground">{page * PAGE_SIZE + i + 1}</td>
@@ -237,18 +239,20 @@ function AccessoriesListPage() {
                           <div className="space-y-1.5">
                             <span className={cn("inline-flex items-center gap-1.5 font-medium whitespace-nowrap", cfg.text)}>
                               <span className={cn("h-2 w-2 rounded-full shrink-0", cfg.dot)} />
-                              {cfg.label}
+                              {mine ? "My Booking" : cfg.label(a.availability)}
                             </span>
-                            {a.availability.state === "booked" && a.availability.bookedBy && (
+                            {othersBooked.length > 0 && (
                               <div className="text-xs text-muted-foreground whitespace-nowrap">
-                                {a.availability.bookedBy.name}{a.availability.bookedBy.department ? ` (${a.availability.bookedBy.department})` : ""} · avail. {a.availability.availableAtLabel}
+                                {othersBooked[0].name}{othersBooked[0].department ? ` (${othersBooked[0].department})` : ""}{othersBooked.length > 1 ? ` +${othersBooked.length - 1} more` : ""} · returns {othersBooked[0].returnsAtLabel}
                               </div>
                             )}
-                            {a.availability.state === "reserved" && (
-                              <div className="text-xs text-muted-foreground whitespace-nowrap">from {a.availability.reservedFromLabel}</div>
+                            {a.availability.nextReservation && (
+                              <div className="text-xs text-muted-foreground whitespace-nowrap">next from {a.availability.nextReservation.fromLabel}</div>
                             )}
-                            {bookingDisabled ? (
-                              <Button size="sm" variant="outline" disabled>Book</Button>
+                            {mine ? (
+                              <AccessoryReturnEarlyButton bookingId={mine.bookingId} />
+                            ) : bookingDisabled ? (
+                              <Button size="sm" variant="outline" disabled>{a.availability.state === "unavailable" ? "Unavailable" : "Fully Booked"}</Button>
                             ) : (
                               <Link to="/accessories/$id" params={{ id: a.id }}>
                                 <Button size="sm" variant="outline">Book</Button>
@@ -371,6 +375,34 @@ function AccessoryRowActions({ accessory, onDone }: { accessory: AccessoryRow; o
         </AlertDialogContent>
       </AlertDialog>
     </>
+  );
+}
+
+function AccessoryReturnEarlyButton({ bookingId, className }: { bookingId: string; className?: string }) {
+  const qc = useQueryClient();
+  const ret = useMutation({
+    mutationFn: () => markAccessoryBookingReturned(bookingId),
+    onSuccess: () => { toast.success("Marked returned — accessory is now available"); invalidateBookingRelatedQueries(qc); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button size="sm" variant="outline" className={className} disabled={ret.isPending}>Return Early</Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Return this booking now?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This ends your booking before its scheduled time and frees the accessory for others immediately. This cannot be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={() => ret.mutate()}>Return now</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 

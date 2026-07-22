@@ -44,7 +44,7 @@ export async function fetchDashboardKpis(now: Date = new Date()): Promise<Dashbo
   for (const e of equipment) {
     if (e.status !== "active") continue;
     const availability = computeEquipmentAvailability(slots[e.id] ?? [], e.total_quantity, now);
-    if (availability.state === "booked") booked += 1; else available += 1;
+    if (availability.state === "fully_booked") booked += 1; else available += 1;
   }
 
   const overdueEquipmentIds = new Set(eqBookings.filter((b) => isPastEnd(b, now)).map((b) => b.equipment_id));
@@ -90,7 +90,7 @@ export async function fetchEquipmentUtilization(now: Date = new Date()): Promise
   for (const e of equipment) {
     if (e.status !== "active") { maintenanceCount += 1; continue; }
     const availability = computeEquipmentAvailability(slots[e.id] ?? [], e.total_quantity, now);
-    if (availability.state === "booked") bookedCount += 1; else idleCount += 1;
+    if (availability.state === "fully_booked") bookedCount += 1; else idleCount += 1;
   }
 
   const total = equipment.length;

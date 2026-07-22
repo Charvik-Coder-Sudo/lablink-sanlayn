@@ -11,6 +11,7 @@ export interface AccessoryBookingSlot {
   start_time: string;
   end_time: string;
   quantity: number;
+  project_name: string;
   profile?: { full_name?: string | null; department?: string | null } | null;
 }
 
@@ -44,7 +45,7 @@ export async function fetchAccessoryBookingSlots(
 
   const { data, error } = await supabase
     .from("accessory_bookings")
-    .select("id,accessory_id,user_id,booking_date,end_date,start_time,end_time,quantity,profile:profiles!accessory_bookings_user_profile_fk(full_name,department)")
+    .select("id,accessory_id,user_id,booking_date,end_date,start_time,end_time,quantity,project_name,profile:profiles!accessory_bookings_user_profile_fk(full_name,department)")
     .in("accessory_id", accessoryIds)
     .eq("status", "booked")
     .lte("booking_date", tomorrowStr)
@@ -71,27 +72,34 @@ export function computeAccessoryAvailability(
     return start <= now && now < end;
   });
   const bookedQty = current.reduce((sum, b) => sum + b.quantity, 0);
+  const availableQty = Math.max(0, totalQuantity - bookedQty);
+  const state: AvailabilityState = bookedQty <= 0 ? "available" : availableQty <= 0 ? "fully_booked" : "limited";
 
-  if (current.length > 0 && bookedQty >= totalQuantity) {
-    const soonest = [...current].sort(
-      (a, b) => combineDateTime(a.end_date, a.end_time).getTime() - combineDateTime(b.end_date, b.end_time).getTime(),
-    )[0];
-    return {
-      state: "booked",
-      bookedBy: { userId: soonest.user_id, bookingId: soonest.id, name: soonest.profile?.full_name ?? "Unknown", department: soonest.profile?.department ?? null },
-      availableAtLabel: formatSlotLabel(soonest.end_date, soonest.end_time, now),
-    };
-  }
+  const currentBookings = [...current]
+    .sort((a, b) => combineDateTime(a.end_date, a.end_time).getTime() - combineDateTime(b.end_date, b.end_time).getTime())
+    .map((b) => ({
+      bookingId: b.id,
+      userId: b.user_id,
+      name: b.profile?.full_name ?? "Unknown",
+      department: b.profile?.department ?? null,
+      projectName: b.project_name,
+      quantity: b.quantity,
+      returnsAtLabel: formatSlotLabel(b.end_date, b.end_time, now),
+    }));
 
   const upcoming = slots
     .filter((b) => combineDateTime(b.booking_date, b.start_time) > now)
     .sort((a, b) => combineDateTime(a.booking_date, a.start_time).getTime() - combineDateTime(b.booking_date, b.start_time).getTime())[0];
 
-  if (upcoming) {
-    return { state: "reserved", reservedFromLabel: formatSlotLabel(upcoming.booking_date, upcoming.start_time, now) };
-  }
-
-  return { state: "available" };
+  return {
+    state,
+    totalQty: totalQuantity,
+    availableQty,
+    currentBookings,
+    nextReservation: upcoming
+      ? { fromLabel: formatSlotLabel(upcoming.booking_date, upcoming.start_time, now), name: upcoming.profile?.full_name ?? "Unknown" }
+      : undefined,
+  };
 }
 
 /** Units not currently tied up by an in-progress booking, right now. */

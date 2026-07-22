@@ -1,10 +1,11 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getAccessory } from "@/lib/accessories";
-import { accessoryDaySchedule, createAccessoryBooking } from "@/lib/accessory-bookings";
+import { accessoryDaySchedule, createAccessoryBooking, listAccessoryBookings } from "@/lib/accessory-bookings";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchAccessoryBookingSlots, computeAccessoryAvailability } from "@/lib/accessory-availability";
 import { EquipmentAvailabilityBadge } from "@/components/equipment-availability-badge";
+import { BookingTimeline } from "@/components/booking-timeline";
 import { useState } from "react";
 import { format } from "date-fns";
 import { validateBookingDateTimeRange } from "@/lib/booking-validation";
@@ -34,7 +35,10 @@ function AccessoryDetailPage() {
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("10:00");
   const [quantity, setQuantity] = useState(1);
+  const [projectName, setProjectName] = useState("");
   const [purpose, setPurpose] = useState("");
+  const [remarks, setRemarks] = useState("");
+  const [expectedReturnDate, setExpectedReturnDate] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
 
   const accessory = useQuery({ queryKey: ["accessory", id], queryFn: () => getAccessory(id) });
@@ -58,6 +62,12 @@ function AccessoryDetailPage() {
     refetchInterval: 60_000,
   });
 
+  const upcoming = useQuery({
+    queryKey: ["accessory-upcoming-reservations", id],
+    enabled: !!accessory.data,
+    queryFn: () => listAccessoryBookings({ accessoryId: id, status: "booked", from: today, limit: 20 }),
+  });
+
   const book = useMutation({
     mutationFn: (input: {
       accessory_id: string;
@@ -66,15 +76,22 @@ function AccessoryDetailPage() {
       start_time: string;
       end_time: string;
       quantity: number;
+      project_name: string;
       purpose: string;
+      remarks?: string;
+      expected_return_date?: string;
     }) => createAccessoryBooking(input),
     onSuccess: () => {
-      toast.success("Booking created");
+      toast.success("Booking confirmed");
+      setProjectName("");
       setPurpose("");
+      setRemarks("");
+      setExpectedReturnDate("");
       setValidationError(null);
       qc.invalidateQueries({ queryKey: ["accessory-schedule", id] });
       qc.invalidateQueries({ queryKey: ["accessory-avail", id] });
       qc.invalidateQueries({ queryKey: ["accessory-booking-slots"] });
+      qc.invalidateQueries({ queryKey: ["accessory-upcoming-reservations", id] });
     },
     onError: (e: Error) => {
       const map: Record<string, string> = {
@@ -84,9 +101,12 @@ function AccessoryDetailPage() {
         cannot_book_in_past: "Cannot book in the past",
         insufficient_quantity: "Not enough accessories available for that slot",
         accessory_unavailable: "Accessory is not available for booking",
-        duplicate_booking: "You already have an overlapping booking for this accessory",
+        duplicate_booking: "You already have an overlapping booking for this accessory — edit or cancel it instead",
         not_authenticated: "You must be signed in to book accessories",
         accessory_not_found: "Accessory not found",
+        project_name_required: "Project name is required",
+        purpose_required: "Purpose is required",
+        invalid_expected_return_date: "Expected return date can't be before the start date",
       };
       toast.error(map[e.message] ?? e.message);
     },
@@ -99,7 +119,9 @@ function AccessoryDetailPage() {
   const nextAvailableSlot = computeNextAvailable(schedule.data ?? [], a.quantity);
   const rangeValidation = validateBookingDateTimeRange({ fromDate, toDate, startTime, endTime });
   const liveAvailability = computeAccessoryAvailability(currentStatus.data?.[id] ?? [], a.quantity);
-  const canSubmit = Boolean(purpose.trim()) && rangeValidation.isValid && (availability.data ?? 0) >= quantity && a.status === "active";
+  const canSubmit = Boolean(projectName.trim()) && Boolean(purpose.trim()) && rangeValidation.isValid && (availability.data ?? 0) >= quantity && a.status === "active";
+  const now = new Date();
+  const futureReservations = (upcoming.data?.rows ?? []).filter((b) => new Date(`${b.booking_date}T${b.start_time}`) > now);
 
   function submitBooking() {
     const validationResult = validateBookingDateTimeRange({ fromDate, toDate, startTime, endTime });
@@ -107,6 +129,8 @@ function AccessoryDetailPage() {
       setValidationError(validationResult.error ?? null);
       return;
     }
+    if (!projectName.trim()) { setValidationError("Project name is required."); return; }
+    if (!purpose.trim()) { setValidationError("Purpose is required."); return; }
     setValidationError(null);
     book.mutate({
       accessory_id: id,
@@ -115,7 +139,10 @@ function AccessoryDetailPage() {
       start_time: startTime,
       end_time: endTime,
       quantity,
+      project_name: projectName,
       purpose,
+      remarks: remarks || undefined,
+      expected_return_date: expectedReturnDate || undefined,
     });
   }
 
@@ -147,7 +174,9 @@ function AccessoryDetailPage() {
             <Info label="Make">{a.make ?? "—"}</Info>
             <Info label="Model">{a.model ?? "—"}</Info>
             <Info label="Device Serial No.">{a.serial_number ?? "—"}</Info>
-            <Info label="Quantity">{a.quantity}</Info>
+            <Info label="Total Quantity">{a.quantity}</Info>
+            <Info label="Booked Quantity">{liveAvailability.totalQty - liveAvailability.availableQty}</Info>
+            <Info label="Available Quantity">{liveAvailability.availableQty}</Info>
             {a.remarks && <Info label="Remarks" className="sm:col-span-2">{a.remarks}</Info>}
           </CardContent>
         </Card>
@@ -163,14 +192,17 @@ function AccessoryDetailPage() {
               <div><Label>Start</Label><Input type="time" min={LAB_START} max={LAB_END} value={startTime} onChange={(ev) => setStartTime(ev.target.value)} /></div>
               <div><Label>End</Label><Input type="time" min={LAB_START} max={LAB_END} value={endTime} onChange={(ev) => setEndTime(ev.target.value)} /></div>
             </div>
-            <div><Label>Quantity</Label><Input type="number" min={1} max={a.quantity} value={quantity} onChange={(ev) => setQuantity(parseInt(ev.target.value || "1", 10))} /></div>
+            <div><Label>Quantity Required</Label><Input type="number" min={1} max={a.quantity} value={quantity} onChange={(ev) => setQuantity(parseInt(ev.target.value || "1", 10))} /></div>
+            <div><Label>Project Name</Label><Input required value={projectName} onChange={(ev) => setProjectName(ev.target.value)} placeholder="e.g. Radar Automation" /></div>
             <div><Label>Purpose</Label><Textarea rows={2} required value={purpose} onChange={(ev) => setPurpose(ev.target.value)} placeholder="e.g. Bench test setup" /></div>
+            <div><Label>Expected Return Date <span className="text-muted-foreground font-normal">(optional)</span></Label><Input type="date" min={fromDate || today} value={expectedReturnDate} onChange={(ev) => setExpectedReturnDate(ev.target.value)} /></div>
+            <div><Label>Remarks <span className="text-muted-foreground font-normal">(optional)</span></Label><Textarea rows={2} value={remarks} onChange={(ev) => setRemarks(ev.target.value)} placeholder="Any additional notes" /></div>
             <div className="rounded-md border border-border/60 bg-muted/30 p-3">
               <div className="font-medium text-sm">{a.description}</div>
               <div className="mt-2">
                 <EquipmentAvailabilityBadge
                   availability={a.status !== "active"
-                    ? { state: "unavailable", reasonLabel: a.status === "maintenance" ? "Under maintenance" : "Retired" }
+                    ? { state: "unavailable", totalQty: a.quantity, availableQty: 0, currentBookings: [], reasonLabel: a.status === "maintenance" ? "Under maintenance" : "Retired" }
                     : liveAvailability}
                 />
               </div>
@@ -199,20 +231,57 @@ function AccessoryDetailPage() {
         </Button>
       </div>
 
+      {liveAvailability.currentBookings.length > 0 && (
+        <Card>
+          <CardHeader><CardTitle className="text-sm font-semibold">Current Borrowers</CardTitle></CardHeader>
+          <CardContent className="space-y-2">
+            {liveAvailability.currentBookings.map((b) => (
+              <div key={b.bookingId} className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-sm">
+                <div>
+                  <div className="font-medium">{b.name}{b.department ? ` · ${b.department}` : ""}</div>
+                  <div className="text-xs text-muted-foreground">Project: {b.projectName} · Qty {b.quantity}</div>
+                </div>
+                <div className="text-xs text-muted-foreground">Returns: <span className="font-medium text-foreground">{b.returnsAtLabel}</span></div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {futureReservations.length > 0 && (
+        <Card>
+          <CardHeader><CardTitle className="text-sm font-semibold">Upcoming Reservations</CardTitle></CardHeader>
+          <CardContent className="space-y-2">
+            {futureReservations.map((b) => (
+              <div key={b.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-sm">
+                <div>
+                  <div className="font-medium">{b.profile?.full_name ?? "—"}{b.profile?.department ? ` · ${b.profile.department}` : ""}</div>
+                  <div className="text-xs text-muted-foreground">Project: {b.project_name} · Qty {b.quantity}</div>
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {format(new Date(b.booking_date), "d MMM")} {b.start_time.slice(0, 5)}–{b.end_time.slice(0, 5)}
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-semibold">Schedule for {format(new Date(fromDate), "EEEE, d MMM yyyy")}</CardTitle>
+            <CardTitle className="text-sm font-semibold">Booking Timeline — {format(new Date(fromDate), "EEEE, d MMM yyyy")}</CardTitle>
             <div className="text-xs text-muted-foreground">Next available: <span className="font-medium text-foreground">{nextAvailableSlot}</span></div>
           </div>
         </CardHeader>
         <CardContent>
+          <BookingTimeline slots={schedule.data ?? []} labStart={LAB_START} labEnd={LAB_END} />
           {(schedule.data ?? []).length === 0
-            ? <div className="text-sm text-muted-foreground">No bookings for this day — full capacity available.</div>
-            : <div className="overflow-x-auto">
+            ? <div className="text-sm text-muted-foreground mt-3">No bookings for this day — full capacity available.</div>
+            : <div className="overflow-x-auto mt-4">
                 <table className="w-full text-sm">
                   <thead className="text-left text-xs uppercase text-muted-foreground border-b">
-                    <tr><th className="py-2 pr-4">Time</th><th className="py-2 pr-4">Booked by</th><th className="py-2 pr-4">Purpose</th><th className="py-2 pr-4 text-right">Qty</th></tr>
+                    <tr><th className="py-2 pr-4">Time</th><th className="py-2 pr-4">Booked by</th><th className="py-2 pr-4">Project</th><th className="py-2 pr-4">Purpose</th><th className="py-2 pr-4 text-right">Qty</th></tr>
                   </thead>
                   <tbody className="divide-y">
                     {schedule.data!.map((s) => (
@@ -222,6 +291,7 @@ function AccessoryDetailPage() {
                           {s.end_date !== s.booking_date && <span className="text-muted-foreground"> (multi-day, through {format(new Date(s.end_date), "d MMM")})</span>}
                         </td>
                         <td className="py-2 pr-4">{s.profile?.full_name ?? "—"}</td>
+                        <td className="py-2 pr-4 text-muted-foreground">{s.project_name}</td>
                         <td className="py-2 pr-4 text-muted-foreground">{s.purpose}</td>
                         <td className="py-2 pr-4 text-right">{s.quantity}</td>
                       </tr>

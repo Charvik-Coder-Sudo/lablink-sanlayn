@@ -95,52 +95,76 @@ export type Database = {
         Row: {
           accessory_id: string
           booking_date: string
+          cancel_reason: string | null
           cancelled_at: string | null
+          cancelled_by: string | null
           created_at: string
+          created_by: string | null
           end_date: string
           end_time: string
+          expected_return_date: string | null
           id: string
+          project_name: string
           purpose: string
           quantity: number
+          remarks: string | null
+          return_reason: string | null
           returned_at: string | null
           returned_by: string | null
           start_time: string
           status: Database["public"]["Enums"]["booking_status"]
           updated_at: string
+          updated_by: string | null
           user_id: string
         }
         Insert: {
           accessory_id: string
           booking_date: string
+          cancel_reason?: string | null
           cancelled_at?: string | null
+          cancelled_by?: string | null
           created_at?: string
+          created_by?: string | null
           end_date: string
           end_time: string
+          expected_return_date?: string | null
           id?: string
+          project_name: string
           purpose: string
           quantity: number
+          remarks?: string | null
+          return_reason?: string | null
           returned_at?: string | null
           returned_by?: string | null
           start_time: string
           status?: Database["public"]["Enums"]["booking_status"]
           updated_at?: string
+          updated_by?: string | null
           user_id: string
         }
         Update: {
           accessory_id?: string
           booking_date?: string
+          cancel_reason?: string | null
           cancelled_at?: string | null
+          cancelled_by?: string | null
           created_at?: string
+          created_by?: string | null
           end_date?: string
           end_time?: string
+          expected_return_date?: string | null
           id?: string
+          project_name?: string
           purpose?: string
           quantity?: number
+          remarks?: string | null
+          return_reason?: string | null
           returned_at?: string | null
           returned_by?: string | null
           start_time?: string
           status?: Database["public"]["Enums"]["booking_status"]
           updated_at?: string
+          updated_by?: string | null
           user_id?: string
         }
         Relationships: [
@@ -170,53 +194,77 @@ export type Database = {
       bookings: {
         Row: {
           booking_date: string
+          cancel_reason: string | null
           cancelled_at: string | null
+          cancelled_by: string | null
           created_at: string
+          created_by: string | null
           end_date: string
           end_time: string
           equipment_id: string
+          expected_return_date: string | null
           id: string
+          project_name: string
           purpose: string
           quantity: number
+          remarks: string | null
+          return_reason: string | null
           returned_at: string | null
           returned_by: string | null
           start_time: string
           status: Database["public"]["Enums"]["booking_status"]
           updated_at: string
+          updated_by: string | null
           user_id: string
         }
         Insert: {
           booking_date: string
+          cancel_reason?: string | null
           cancelled_at?: string | null
+          cancelled_by?: string | null
           created_at?: string
+          created_by?: string | null
           end_date: string
           end_time: string
           equipment_id: string
+          expected_return_date?: string | null
           id?: string
+          project_name: string
           purpose: string
           quantity: number
+          remarks?: string | null
+          return_reason?: string | null
           returned_at?: string | null
           returned_by?: string | null
           start_time: string
           status?: Database["public"]["Enums"]["booking_status"]
           updated_at?: string
+          updated_by?: string | null
           user_id: string
         }
         Update: {
           booking_date?: string
+          cancel_reason?: string | null
           cancelled_at?: string | null
+          cancelled_by?: string | null
           created_at?: string
+          created_by?: string | null
           end_date?: string
           end_time?: string
           equipment_id?: string
+          expected_return_date?: string | null
           id?: string
+          project_name?: string
           purpose?: string
           quantity?: number
+          remarks?: string | null
+          return_reason?: string | null
           returned_at?: string | null
           returned_by?: string | null
           start_time?: string
           status?: Database["public"]["Enums"]["booking_status"]
           updated_at?: string
+          updated_by?: string | null
           user_id?: string
         }
         Relationships: [
@@ -378,33 +426,84 @@ export type Database = {
         }
         Returns: number
       }
+      admin_update_accessory_booking: {
+        Args: {
+          _booking_date: string
+          _booking_id: string
+          _end: string
+          _end_date: string
+          _expected_return_date?: string | null
+          _override?: boolean
+          _project_name: string
+          _purpose: string
+          _quantity: number
+          _remarks?: string | null
+          _start: string
+        }
+        Returns: Database["public"]["Tables"]["accessory_bookings"]["Row"]
+        SetofOptions: {
+          from: "*"
+          to: "accessory_bookings"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      admin_update_booking: {
+        Args: {
+          _booking_date: string
+          _booking_id: string
+          _end: string
+          _end_date: string
+          _expected_return_date?: string | null
+          _override?: boolean
+          _project_name: string
+          _purpose: string
+          _quantity: number
+          _remarks?: string | null
+          _start: string
+        }
+        Returns: Database["public"]["Tables"]["bookings"]["Row"]
+        SetofOptions: {
+          from: "*"
+          to: "bookings"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      cancel_accessory_booking: {
+        Args: { _booking_id: string; _reason?: string | null }
+        Returns: Database["public"]["Tables"]["accessory_bookings"]["Row"]
+        SetofOptions: {
+          from: "*"
+          to: "accessory_bookings"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      cancel_booking: {
+        Args: { _booking_id: string; _reason?: string | null }
+        Returns: Database["public"]["Tables"]["bookings"]["Row"]
+        SetofOptions: {
+          from: "*"
+          to: "bookings"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       create_accessory_booking: {
         Args: {
           _accessory_id: string
           _booking_date: string
           _end: string
           _end_date: string
+          _expected_return_date?: string | null
+          _project_name: string
           _purpose: string
           _quantity: number
+          _remarks?: string | null
           _start: string
         }
-        Returns: {
-          accessory_id: string
-          booking_date: string
-          cancelled_at: string | null
-          created_at: string
-          end_date: string
-          end_time: string
-          id: string
-          purpose: string
-          quantity: number
-          returned_at: string | null
-          returned_by: string | null
-          start_time: string
-          status: Database["public"]["Enums"]["booking_status"]
-          updated_at: string
-          user_id: string
-        }
+        Returns: Database["public"]["Tables"]["accessory_bookings"]["Row"]
         SetofOptions: {
           from: "*"
           to: "accessory_bookings"
@@ -418,27 +517,14 @@ export type Database = {
           _end: string
           _end_date: string
           _equipment_id: string
+          _expected_return_date?: string | null
+          _project_name: string
           _purpose: string
           _quantity: number
+          _remarks?: string | null
           _start: string
         }
-        Returns: {
-          booking_date: string
-          cancelled_at: string | null
-          created_at: string
-          end_date: string
-          end_time: string
-          equipment_id: string
-          id: string
-          purpose: string
-          quantity: number
-          returned_at: string | null
-          returned_by: string | null
-          start_time: string
-          status: Database["public"]["Enums"]["booking_status"]
-          updated_at: string
-          user_id: string
-        }
+        Returns: Database["public"]["Tables"]["bookings"]["Row"]
         SetofOptions: {
           from: "*"
           to: "bookings"
@@ -467,10 +553,39 @@ export type Database = {
         }
         Returns: boolean
       }
+      return_accessory_booking: {
+        Args: { _booking_id: string; _reason?: string | null }
+        Returns: Database["public"]["Tables"]["accessory_bookings"]["Row"]
+        SetofOptions: {
+          from: "*"
+          to: "accessory_bookings"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      return_booking: {
+        Args: { _booking_id: string; _reason?: string | null }
+        Returns: Database["public"]["Tables"]["bookings"]["Row"]
+        SetofOptions: {
+          from: "*"
+          to: "bookings"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
     }
     Enums: {
       app_role: "admin" | "manager" | "employee"
-      booking_status: "booked" | "cancelled" | "returned" | "completed"
+      booking_status:
+        | "booked"
+        | "cancelled"
+        | "returned"
+        | "completed"
+        | "pending"
+        | "approved"
+        | "rejected"
+        | "in_use"
+        | "overdue"
       equipment_status: "active" | "maintenance" | "retired"
     }
     CompositeTypes: {
@@ -600,7 +715,17 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "manager", "employee"],
-      booking_status: ["booked", "cancelled", "returned", "completed"],
+      booking_status: [
+        "booked",
+        "cancelled",
+        "returned",
+        "completed",
+        "pending",
+        "approved",
+        "rejected",
+        "in_use",
+        "overdue",
+      ],
       equipment_status: ["active", "maintenance", "retired"],
     },
   },

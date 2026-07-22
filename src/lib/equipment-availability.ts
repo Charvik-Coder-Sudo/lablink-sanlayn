@@ -10,16 +10,33 @@ export interface BookingSlot {
   start_time: string;
   end_time: string;
   quantity: number;
+  project_name: string;
   profile?: { full_name?: string | null; department?: string | null } | null;
 }
 
-export type AvailabilityState = "available" | "booked" | "reserved" | "unavailable";
+/**
+ * Availability is quantity-driven, not time-driven: "available" only when every unit is
+ * free right now, "fully_booked" only when zero units are free right now. A booking that
+ * starts later today never affects the CURRENT state — see `nextReservation` for that.
+ */
+export type AvailabilityState = "available" | "limited" | "fully_booked" | "unavailable";
+
+export interface CurrentBooking {
+  bookingId: string;
+  userId: string;
+  name: string;
+  department: string | null;
+  projectName: string;
+  quantity: number;
+  returnsAtLabel: string;
+}
 
 export interface EquipmentAvailability {
   state: AvailabilityState;
-  bookedBy?: { userId: string; bookingId: string; name: string; department: string | null };
-  availableAtLabel?: string;
-  reservedFromLabel?: string;
+  totalQty: number;
+  availableQty: number;
+  currentBookings: CurrentBooking[];
+  nextReservation?: { fromLabel: string; name: string };
   reasonLabel?: string;
 }
 
@@ -54,7 +71,7 @@ export async function fetchEquipmentBookingSlots(
 
   const { data, error } = await supabase
     .from("bookings")
-    .select("id,equipment_id,user_id,booking_date,end_date,start_time,end_time,quantity,profile:profiles!bookings_user_profile_fk(full_name,department)")
+    .select("id,equipment_id,user_id,booking_date,end_date,start_time,end_time,quantity,project_name,profile:profiles!bookings_user_profile_fk(full_name,department)")
     .in("equipment_id", equipmentIds)
     .eq("status", "booked")
     .lte("booking_date", tomorrowStr)
@@ -71,9 +88,9 @@ export async function fetchEquipmentBookingSlots(
 }
 
 /**
- * Determines real-time availability for one equipment item from its nearby booking slots.
- * "booked" only when currently-active bookings consume the full quantity; otherwise the
- * nearest upcoming slot (already limited to today/tomorrow by the fetch) marks it "reserved".
+ * Determines real-time, quantity-driven availability for one equipment item from its
+ * nearby booking slots. State is purely a function of how many units are tied up by
+ * bookings active RIGHT NOW — never by whether a future reservation exists.
  */
 export function computeEquipmentAvailability(
   slots: BookingSlot[],
@@ -86,30 +103,37 @@ export function computeEquipmentAvailability(
     return start <= now && now < end;
   });
   const bookedQty = current.reduce((sum, b) => sum + b.quantity, 0);
+  const availableQty = Math.max(0, totalQuantity - bookedQty);
+  const state: AvailabilityState = bookedQty <= 0 ? "available" : availableQty <= 0 ? "fully_booked" : "limited";
 
-  if (current.length > 0 && bookedQty >= totalQuantity) {
-    const soonest = [...current].sort(
-      (a, b) => combineDateTime(a.end_date, a.end_time).getTime() - combineDateTime(b.end_date, b.end_time).getTime(),
-    )[0];
-    return {
-      state: "booked",
-      bookedBy: { userId: soonest.user_id, bookingId: soonest.id, name: soonest.profile?.full_name ?? "Unknown", department: soonest.profile?.department ?? null },
-      availableAtLabel: formatSlotLabel(soonest.end_date, soonest.end_time, now),
-    };
-  }
+  const currentBookings: CurrentBooking[] = [...current]
+    .sort((a, b) => combineDateTime(a.end_date, a.end_time).getTime() - combineDateTime(b.end_date, b.end_time).getTime())
+    .map((b) => ({
+      bookingId: b.id,
+      userId: b.user_id,
+      name: b.profile?.full_name ?? "Unknown",
+      department: b.profile?.department ?? null,
+      projectName: b.project_name,
+      quantity: b.quantity,
+      returnsAtLabel: formatSlotLabel(b.end_date, b.end_time, now),
+    }));
 
   const upcoming = slots
     .filter((b) => combineDateTime(b.booking_date, b.start_time) > now)
     .sort((a, b) => combineDateTime(a.booking_date, a.start_time).getTime() - combineDateTime(b.booking_date, b.start_time).getTime())[0];
 
-  if (upcoming) {
-    return { state: "reserved", reservedFromLabel: formatSlotLabel(upcoming.booking_date, upcoming.start_time, now) };
-  }
-
-  return { state: "available" };
+  return {
+    state,
+    totalQty: totalQuantity,
+    availableQty,
+    currentBookings,
+    nextReservation: upcoming
+      ? { fromLabel: formatSlotLabel(upcoming.booking_date, upcoming.start_time, now), name: upcoming.profile?.full_name ?? "Unknown" }
+      : undefined,
+  };
 }
 
-/** Units not currently tied up by an in-progress booking, right now. */
+/** Units not currently tied up by an in-progress booking, right now. Equal to computeEquipmentAvailability(...).availableQty. */
 export function computeAvailableQuantity(
   slots: BookingSlot[],
   totalQuantity: number,

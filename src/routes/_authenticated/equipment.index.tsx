@@ -9,6 +9,7 @@ import {
   fetchEquipmentBookingSlots, computeEquipmentAvailability, computeAvailableQuantity,
   type AvailabilityState, type EquipmentAvailability,
 } from "@/lib/equipment-availability";
+import { AVAILABILITY_CONFIG } from "@/components/equipment-availability-badge";
 import {
   parseEquipmentWorkbook, validateEquipmentRows,
   type ParsedEquipmentRow, type RowValidationFailure,
@@ -42,7 +43,7 @@ interface EquipmentSearch {
 
 export const Route = createFileRoute("/_authenticated/equipment/")({
   validateSearch: (search: Record<string, unknown>): EquipmentSearch => ({
-    availability: (["available", "booked", "reserved", "unavailable"] as const).includes(search.availability as AvailabilityState)
+    availability: (["available", "limited", "fully_booked", "unavailable"] as const).includes(search.availability as AvailabilityState)
       ? (search.availability as AvailabilityState)
       : undefined,
   }),
@@ -57,14 +58,7 @@ type EnrichedRow = EquipmentRow & { availability: EquipmentAvailability; availab
 
 type SortKey = "category" | "name" | "manufacturer" | "model" | "serial_number" | "equipment_code" | "total_quantity" | "status";
 
-const STATUS_CONFIG: Record<AvailabilityState, { dot: string; text: string; label: string }> = {
-  available: { dot: "bg-emerald-500", text: "text-emerald-700 dark:text-emerald-400", label: "Available" },
-  booked: { dot: "bg-red-500", text: "text-red-700 dark:text-red-400", label: "Booked" },
-  reserved: { dot: "bg-amber-500", text: "text-amber-700 dark:text-amber-400", label: "Reserved" },
-  unavailable: { dot: "bg-slate-400", text: "text-muted-foreground", label: "Under Maintenance" },
-};
-
-const STATUS_PRIORITY: Record<AvailabilityState, number> = { booked: 0, reserved: 1, available: 2, unavailable: 3 };
+const STATUS_PRIORITY: Record<AvailabilityState, number> = { fully_booked: 0, limited: 1, available: 2, unavailable: 3 };
 
 function compareRows(a: EnrichedRow, b: EnrichedRow, key: SortKey): number {
   if (key === "total_quantity") return a.total_quantity - b.total_quantity;
@@ -113,7 +107,7 @@ function EquipmentListPage() {
   const enriched: EnrichedRow[] = useMemo(() => rows.map((e) => {
     const slots = bookingSlots.data?.[e.id] ?? [];
     const availability: EquipmentAvailability = e.status !== "active"
-      ? { state: "unavailable", reasonLabel: e.status === "maintenance" ? "Under maintenance" : "Retired" }
+      ? { state: "unavailable", totalQty: e.total_quantity, availableQty: 0, currentBookings: [], reasonLabel: e.status === "maintenance" ? "Under maintenance" : "Retired" }
       : computeEquipmentAvailability(slots, e.total_quantity);
     const availableQty = e.status !== "active" ? 0 : computeAvailableQuantity(slots, e.total_quantity);
     return { ...e, availability, availableQty };
@@ -206,10 +200,10 @@ function EquipmentListPage() {
               <SelectTrigger className="w-full sm:w-48"><SelectValue placeholder="Availability" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All availability</SelectItem>
-                <SelectItem value="available">Available</SelectItem>
-                <SelectItem value="booked">Booked</SelectItem>
-                <SelectItem value="reserved">Reserved</SelectItem>
-                <SelectItem value="unavailable">Under maintenance</SelectItem>
+                <SelectItem value="available">🟢 Available</SelectItem>
+                <SelectItem value="limited">🟡 Limited</SelectItem>
+                <SelectItem value="fully_booked">🔴 Fully Booked</SelectItem>
+                <SelectItem value="unavailable">⚫ Under maintenance</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -225,9 +219,10 @@ function EquipmentListPage() {
           {/* Mobile: card list (no horizontal scrolling) */}
           <div className="md:hidden space-y-3">
             {pageRows.map((e, i) => {
-              const cfg = STATUS_CONFIG[e.availability.state];
-              const isMine = e.availability.state === "booked" && e.availability.bookedBy?.userId === user?.id;
-              const bookingDisabled = (e.availability.state === "booked" && !isMine) || e.availability.state === "unavailable";
+              const cfg = AVAILABILITY_CONFIG[e.availability.state];
+              const mine = e.availability.currentBookings.find((b) => b.userId === user?.id);
+              const bookingDisabled = (e.availability.state === "fully_booked" && !mine) || e.availability.state === "unavailable";
+              const othersBooked = e.availability.currentBookings.filter((b) => b.userId !== user?.id);
               return (
                 <Card key={e.id}>
                   <CardContent className="p-4 space-y-2.5">
@@ -239,7 +234,7 @@ function EquipmentListPage() {
                       </div>
                       <span className={cn("inline-flex items-center gap-1.5 text-xs font-medium whitespace-nowrap shrink-0", cfg.text)}>
                         <span className={cn("h-2 w-2 rounded-full shrink-0", cfg.dot)} />
-                        {isMine ? "My Booking" : cfg.label}
+                        {mine ? "My Booking" : cfg.label(e.availability)}
                       </span>
                     </div>
                     <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-muted-foreground">
@@ -251,25 +246,26 @@ function EquipmentListPage() {
                           <span className="text-foreground font-medium">Cal. due:</span> {e.calibration_due_date}
                         </div>
                       )}
-                      {e.availability.state === "booked" && e.availability.bookedBy && !isMine && (
+                      {othersBooked.length > 0 && (
                         <>
-                          <div className="col-span-2 truncate"><span className="text-foreground font-medium">Booked by:</span> {e.availability.bookedBy.name}</div>
-                          {e.availability.bookedBy.department && <div className="col-span-2"><span className="text-foreground font-medium">Department:</span> {e.availability.bookedBy.department}</div>}
-                          {e.availability.availableAtLabel && <div className="col-span-2"><span className="text-foreground font-medium">Available again:</span> {e.availability.availableAtLabel}</div>}
+                          <div className="col-span-2 truncate"><span className="text-foreground font-medium">Booked by:</span> {othersBooked[0].name}{othersBooked.length > 1 ? ` +${othersBooked.length - 1} more` : ""}</div>
+                          {othersBooked[0].department && <div className="col-span-2"><span className="text-foreground font-medium">Department:</span> {othersBooked[0].department}</div>}
+                          <div className="col-span-2"><span className="text-foreground font-medium">Project:</span> {othersBooked[0].projectName}</div>
+                          <div className="col-span-2"><span className="text-foreground font-medium">Returns:</span> {othersBooked[0].returnsAtLabel}</div>
                         </>
                       )}
-                      {e.availability.state === "reserved" && e.availability.reservedFromLabel && (
-                        <div className="col-span-2"><span className="text-foreground font-medium">Reserved from:</span> {e.availability.reservedFromLabel}</div>
+                      {e.availability.nextReservation && (
+                        <div className="col-span-2"><span className="text-foreground font-medium">Next reservation:</span> {e.availability.nextReservation.fromLabel}</div>
                       )}
                     </div>
                     <div className="flex items-center gap-2 pt-1">
                       <Link to="/equipment/$id" params={{ id: e.id }} className="flex-1">
                         <Button size="sm" variant="ghost" className="w-full">Details</Button>
                       </Link>
-                      {isMine && e.availability.bookedBy ? (
-                        <ReturnEarlyButton bookingId={e.availability.bookedBy.bookingId} className="flex-1" />
+                      {mine ? (
+                        <ReturnEarlyButton bookingId={mine.bookingId} className="flex-1" />
                       ) : bookingDisabled ? (
-                        <Button size="sm" variant="outline" className="flex-1" disabled>{e.availability.state === "unavailable" ? "Unavailable" : "Booked"}</Button>
+                        <Button size="sm" variant="outline" className="flex-1" disabled>{e.availability.state === "unavailable" ? "Unavailable" : "Fully Booked"}</Button>
                       ) : (
                         <Link to="/equipment/$id" params={{ id: e.id }} className="flex-1">
                           <Button size="sm" variant="outline" className="w-full">Book</Button>
@@ -309,9 +305,10 @@ function EquipmentListPage() {
                 </thead>
                 <tbody className="divide-y">
                   {pageRows.map((e, i) => {
-                    const cfg = STATUS_CONFIG[e.availability.state];
-                    const isMine = e.availability.state === "booked" && e.availability.bookedBy?.userId === user?.id;
-                    const bookingDisabled = (e.availability.state === "booked" && !isMine) || e.availability.state === "unavailable";
+                    const cfg = AVAILABILITY_CONFIG[e.availability.state];
+                    const mine = e.availability.currentBookings.find((b) => b.userId === user?.id);
+                    const bookingDisabled = (e.availability.state === "fully_booked" && !mine) || e.availability.state === "unavailable";
+                    const othersBooked = e.availability.currentBookings.filter((b) => b.userId !== user?.id);
                     return (
                       <tr key={e.id} className="hover:bg-muted/30 transition-colors">
                         <td className="py-2.5 px-3 text-muted-foreground">{page * PAGE_SIZE + i + 1}</td>
@@ -332,19 +329,19 @@ function EquipmentListPage() {
                         <td className="py-2.5 px-3">
                           <span className={cn("inline-flex items-center gap-1.5 font-medium whitespace-nowrap", cfg.text)}>
                             <span className={cn("h-2 w-2 rounded-full shrink-0", cfg.dot)} />
-                            {isMine ? "My Booking" : cfg.label}
+                            {mine ? "My Booking" : cfg.label(e.availability)}
                           </span>
                         </td>
                         <td className="py-2.5 px-3 text-muted-foreground whitespace-nowrap">
-                          {e.availability.state === "booked" && e.availability.bookedBy
-                            ? `${e.availability.bookedBy.name}${e.availability.bookedBy.department ? ` (${e.availability.bookedBy.department})` : ""}`
+                          {othersBooked.length > 0
+                            ? `${othersBooked[0].name}${othersBooked[0].department ? ` (${othersBooked[0].department})` : ""}${othersBooked.length > 1 ? ` +${othersBooked.length - 1} more` : ""}`
                             : "—"}
                         </td>
                         <td className="py-2.5 px-3 text-muted-foreground whitespace-nowrap">
-                          {e.availability.state === "booked" && e.availability.availableAtLabel
-                            ? e.availability.availableAtLabel
-                            : e.availability.state === "reserved" && e.availability.reservedFromLabel
-                              ? e.availability.reservedFromLabel
+                          {othersBooked.length > 0
+                            ? othersBooked[0].returnsAtLabel
+                            : e.availability.nextReservation
+                              ? e.availability.nextReservation.fromLabel
                               : "—"}
                         </td>
                         <td className="py-2.5 px-3">
@@ -352,10 +349,10 @@ function EquipmentListPage() {
                             <Link to="/equipment/$id" params={{ id: e.id }}>
                               <Button size="sm" variant="ghost">Details</Button>
                             </Link>
-                            {isMine && e.availability.bookedBy ? (
-                              <ReturnEarlyButton bookingId={e.availability.bookedBy.bookingId} />
+                            {mine ? (
+                              <ReturnEarlyButton bookingId={mine.bookingId} />
                             ) : bookingDisabled ? (
-                              <Button size="sm" variant="outline" disabled>{e.availability.state === "unavailable" ? "Unavailable" : "Booked"}</Button>
+                              <Button size="sm" variant="outline" disabled>{e.availability.state === "unavailable" ? "Unavailable" : "Fully Booked"}</Button>
                             ) : (
                               <Link to="/equipment/$id" params={{ id: e.id }}>
                                 <Button size="sm" variant="outline">Book</Button>
