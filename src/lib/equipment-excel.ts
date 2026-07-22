@@ -172,8 +172,6 @@ export async function parseEquipmentWorkbook(file: File): Promise<ParsedEquipmen
   return { rows, sheetName: pick.sheetName };
 }
 
-const REQUIRED_ASSET_ID_REASON = "Asset ID (equipment_code is required and unique in the existing schema)";
-
 export function validateEquipmentRows(rows: ParsedEquipmentRow[]): {
   valid: ParsedEquipmentRow[];
   invalid: RowValidationFailure[];
@@ -182,12 +180,14 @@ export function validateEquipmentRows(rows: ParsedEquipmentRow[]): {
   const invalid: RowValidationFailure[] = [];
 
   for (const row of rows) {
+    // Asset ID is intentionally NOT required — the Excel master is the source of truth and
+    // many items legitimately have no Asset ID. Only genuinely required fields are checked,
+    // so no equipment row is ever silently skipped for a missing Asset ID.
     const missing: string[] = [];
     if (!row.description) missing.push("Description");
     if (!row.category) missing.push("Category");
     if (!row.device_serial_no) missing.push("Device Serial Number");
     if (row.qty === null) missing.push("Qty");
-    if (!row.asset_id) missing.push(REQUIRED_ASSET_ID_REASON);
 
     if (missing.length > 0) {
       invalid.push({ row: row.rowNumber, description: row.description || "(no description)", reason: `Missing ${missing.join(", ")}` });

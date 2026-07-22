@@ -37,8 +37,6 @@ function EquipmentDetailPage() {
   const [quantity, setQuantity] = useState(1);
   const [projectName, setProjectName] = useState("");
   const [purpose, setPurpose] = useState("");
-  const [remarks, setRemarks] = useState("");
-  const [expectedReturnDate, setExpectedReturnDate] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
 
   const equipment = useQuery({ queryKey: ["equipment", id], queryFn: () => getEquipment(id) });
@@ -78,15 +76,11 @@ function EquipmentDetailPage() {
       quantity: number;
       project_name: string;
       purpose: string;
-      remarks?: string;
-      expected_return_date?: string;
     }) => createBooking(input),
     onSuccess: () => {
       toast.success("Booking confirmed");
       setProjectName("");
       setPurpose("");
-      setRemarks("");
-      setExpectedReturnDate("");
       setValidationError(null);
       qc.invalidateQueries({ queryKey: ["schedule", id] });
       qc.invalidateQueries({ queryKey: ["avail", id] });
@@ -106,7 +100,6 @@ function EquipmentDetailPage() {
         equipment_not_found: "Equipment not found",
         project_name_required: "Project name is required",
         purpose_required: "Purpose is required",
-        invalid_expected_return_date: "Expected return date can't be before the start date",
       };
       toast.error(map[e.message] ?? e.message);
     },
@@ -141,8 +134,6 @@ function EquipmentDetailPage() {
       quantity,
       project_name: projectName,
       purpose,
-      remarks: remarks || undefined,
-      expected_return_date: expectedReturnDate || undefined,
     });
   }
 
@@ -155,7 +146,7 @@ function EquipmentDetailPage() {
           <CardHeader>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="text-xs font-mono text-muted-foreground">{e.equipment_code}</div>
+                <div className="text-xs font-mono text-muted-foreground">{e.equipment_code || "—"}</div>
                 <CardTitle className="text-lg sm:text-xl">{e.name}</CardTitle>
                 <div className="text-sm text-muted-foreground mt-0.5">{e.category} · {e.lab_location}</div>
               </div>
@@ -193,14 +184,12 @@ function EquipmentDetailPage() {
             <div><Label>Quantity Required</Label><Input type="number" min={1} max={e.total_quantity} value={quantity} onChange={(ev) => setQuantity(parseInt(ev.target.value || "1", 10))} /></div>
             <div><Label>Project Name</Label><Input required value={projectName} onChange={(ev) => setProjectName(ev.target.value)} placeholder="e.g. Radar Automation" /></div>
             <div><Label>Purpose</Label><Textarea rows={2} required value={purpose} onChange={(ev) => setPurpose(ev.target.value)} placeholder="e.g. Sample preparation" /></div>
-            <div><Label>Expected Return Date <span className="text-muted-foreground font-normal">(optional)</span></Label><Input type="date" min={fromDate || today} value={expectedReturnDate} onChange={(ev) => setExpectedReturnDate(ev.target.value)} /></div>
-            <div><Label>Remarks <span className="text-muted-foreground font-normal">(optional)</span></Label><Textarea rows={2} value={remarks} onChange={(ev) => setRemarks(ev.target.value)} placeholder="Any additional notes" /></div>
             <div className="rounded-md border border-border/60 bg-muted/30 p-3">
               <div className="font-medium text-sm">{e.name}</div>
               <div className="mt-2">
                 <EquipmentAvailabilityBadge
                   availability={e.status !== "active"
-                    ? { state: "unavailable", totalQty: e.total_quantity, availableQty: 0, currentBookings: [], reasonLabel: e.status === "maintenance" ? "Under maintenance" : "Retired" }
+                    ? { state: "unavailable", totalQty: e.total_quantity, availableQty: 0, currentBookings: [], bookedQty: 0, reasonLabel: e.status === "maintenance" ? "Under maintenance" : "Retired" }
                     : liveAvailability}
                 />
               </div>

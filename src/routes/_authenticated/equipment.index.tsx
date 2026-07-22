@@ -107,7 +107,7 @@ function EquipmentListPage() {
   const enriched: EnrichedRow[] = useMemo(() => rows.map((e) => {
     const slots = bookingSlots.data?.[e.id] ?? [];
     const availability: EquipmentAvailability = e.status !== "active"
-      ? { state: "unavailable", totalQty: e.total_quantity, availableQty: 0, currentBookings: [], reasonLabel: e.status === "maintenance" ? "Under maintenance" : "Retired" }
+      ? { state: "unavailable", totalQty: e.total_quantity, availableQty: 0, currentBookings: [], bookedQty: 0, reasonLabel: e.status === "maintenance" ? "Under maintenance" : "Retired" }
       : computeEquipmentAvailability(slots, e.total_quantity);
     const availableQty = e.status !== "active" ? 0 : computeAvailableQuantity(slots, e.total_quantity);
     return { ...e, availability, availableQty };
@@ -201,8 +201,8 @@ function EquipmentListPage() {
               <SelectContent>
                 <SelectItem value="all">All availability</SelectItem>
                 <SelectItem value="available">🟢 Available</SelectItem>
-                <SelectItem value="limited">🟡 Limited</SelectItem>
-                <SelectItem value="fully_booked">🔴 Fully Booked</SelectItem>
+                <SelectItem value="limited">🟡 Partially Available</SelectItem>
+                <SelectItem value="fully_booked">🔴 Unavailable</SelectItem>
                 <SelectItem value="unavailable">⚫ Under maintenance</SelectItem>
               </SelectContent>
             </Select>
@@ -238,7 +238,7 @@ function EquipmentListPage() {
                       </span>
                     </div>
                     <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                      <div><span className="text-foreground font-medium">Asset ID:</span> {e.equipment_code}</div>
+                      <div><span className="text-foreground font-medium">Asset ID:</span> {e.equipment_code || "—"}</div>
                       <div><span className="text-foreground font-medium">Available:</span> {e.availableQty} / {e.total_quantity}</div>
                       <div className="col-span-2 truncate"><span className="text-foreground font-medium">Serial:</span> {e.serial_number || "—"}</div>
                       {e.calibration_due_date && (
@@ -319,7 +319,7 @@ function EquipmentListPage() {
                         <td className="py-2.5 px-3 text-muted-foreground">{e.manufacturer || "—"}</td>
                         <td className="py-2.5 px-3 text-muted-foreground">{e.model || "—"}</td>
                         <td className="py-2.5 px-3 font-mono text-xs text-muted-foreground">{e.serial_number || "—"}</td>
-                        <td className="py-2.5 px-3 font-mono text-xs">{e.equipment_code}</td>
+                        <td className="py-2.5 px-3 font-mono text-xs">{e.equipment_code || "—"}</td>
                         <td className="py-2.5 px-3 text-right">{e.total_quantity}</td>
                         <td className="py-2.5 px-3 text-right font-medium">{e.availableQty}</td>
                         <td className="py-2.5 px-3 text-muted-foreground">{e.calibration_date || "—"}</td>
@@ -384,7 +384,7 @@ function EquipmentListPage() {
 }
 
 function emptyEq(): EquipmentInput {
-  return { equipment_code: "", name: "", category: "", manufacturer: "", model: "", serial_number: "", lab_location: "", total_quantity: 1, remarks: "", status: "active", calibration_date: null, calibration_due_date: null };
+  return { equipment_code: null, name: "", category: "", manufacturer: "", model: "", serial_number: "", lab_location: "", total_quantity: 1, remarks: "", status: "active", calibration_date: null, calibration_due_date: null };
 }
 
 function EquipmentDialog({ initial, onDone, trigger }: { initial?: EquipmentInput & { id?: string }; onDone: () => void; trigger?: React.ReactNode }) {
@@ -410,7 +410,7 @@ function EquipmentDialog({ initial, onDone, trigger }: { initial?: EquipmentInpu
       <DialogContent className="max-w-lg">
         <DialogHeader><DialogTitle>{isEdit ? "Edit equipment" : "Add equipment"}</DialogTitle></DialogHeader>
         <form onSubmit={(e) => { e.preventDefault(); mut.mutate(); }} className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1.5"><Label>Equipment code</Label><Input required value={form.equipment_code} onChange={(e) => setForm({ ...form, equipment_code: e.target.value })} /></div>
+          <div className="space-y-1.5"><Label>Asset ID <span className="text-muted-foreground font-normal">(optional)</span></Label><Input value={form.equipment_code ?? ""} onChange={(e) => setForm({ ...form, equipment_code: e.target.value })} /></div>
           <div className="space-y-1.5"><Label>Name</Label><Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
           <div className="space-y-1.5"><Label>Category</Label><Input required value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} /></div>
           <div className="space-y-1.5"><Label>Lab location</Label><Input required value={form.lab_location} onChange={(e) => setForm({ ...form, lab_location: e.target.value })} /></div>

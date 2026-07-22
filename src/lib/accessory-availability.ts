@@ -34,29 +34,56 @@ function formatSlotLabel(dateStr: string, timeStr: string, now: Date): string {
   return `${dayLabel(dateStr, now)} ${format(combineDateTime(dateStr, timeStr), "h:mm a")}`;
 }
 
+interface RawAccessorySlotRow {
+  id: string;
+  accessory_id: string;
+  user_id: string;
+  booking_date: string;
+  end_date: string;
+  start_time: string;
+  end_time: string;
+  quantity: number;
+  project_name: string;
+  full_name: string | null;
+  department: string | null;
+}
+
+/**
+ * Fetches active ("booked") accessory slots overlapping [from, to] (default today..tomorrow)
+ * via the SECURITY DEFINER `accessory_booking_slots` RPC, so every authenticated user sees
+ * the true booking state (a normal user's direct read is RLS-limited to their own rows).
+ * Mirrors fetchEquipmentBookingSlots exactly to keep the modules behaviorally identical.
+ */
 export async function fetchAccessoryBookingSlots(
   accessoryIds: string[],
-  opts?: { now?: Date },
+  opts?: { now?: Date; from?: string; to?: string },
 ): Promise<Record<string, AccessoryBookingSlot[]>> {
   if (accessoryIds.length === 0) return {};
   const now = opts?.now ?? new Date();
-  const todayStr = format(now, "yyyy-MM-dd");
-  const tomorrowStr = format(addDays(now, 1), "yyyy-MM-dd");
+  const from = opts?.from ?? format(now, "yyyy-MM-dd");
+  const to = opts?.to ?? format(addDays(now, 1), "yyyy-MM-dd");
 
-  const { data, error } = await supabase
-    .from("accessory_bookings")
-    .select("id,accessory_id,user_id,booking_date,end_date,start_time,end_time,quantity,project_name,profile:profiles!accessory_bookings_user_profile_fk(full_name,department)")
-    .in("accessory_id", accessoryIds)
-    .eq("status", "booked")
-    .lte("booking_date", tomorrowStr)
-    .gte("end_date", todayStr)
-    .order("booking_date", { ascending: true })
-    .order("start_time", { ascending: true });
+  const { data, error } = await supabase.rpc("accessory_booking_slots", {
+    _accessory_ids: accessoryIds,
+    _from: from,
+    _to: to,
+  });
   if (error) throw error;
 
   const map: Record<string, AccessoryBookingSlot[]> = {};
-  for (const row of (data ?? []) as AccessoryBookingSlot[]) {
-    (map[row.accessory_id] ??= []).push(row);
+  for (const row of (data ?? []) as RawAccessorySlotRow[]) {
+    (map[row.accessory_id] ??= []).push({
+      id: row.id,
+      accessory_id: row.accessory_id,
+      user_id: row.user_id,
+      booking_date: row.booking_date,
+      end_date: row.end_date,
+      start_time: row.start_time,
+      end_time: row.end_time,
+      quantity: row.quantity,
+      project_name: row.project_name,
+      profile: { full_name: row.full_name, department: row.department },
+    });
   }
   return map;
 }
@@ -84,6 +111,7 @@ export function computeAccessoryAvailability(
       department: b.profile?.department ?? null,
       projectName: b.project_name,
       quantity: b.quantity,
+      fromLabel: formatSlotLabel(b.booking_date, b.start_time, now),
       returnsAtLabel: formatSlotLabel(b.end_date, b.end_time, now),
     }));
 
@@ -95,6 +123,7 @@ export function computeAccessoryAvailability(
     state,
     totalQty: totalQuantity,
     availableQty,
+    bookedQty,
     currentBookings,
     nextReservation: upcoming
       ? { fromLabel: formatSlotLabel(upcoming.booking_date, upcoming.start_time, now), name: upcoming.profile?.full_name ?? "Unknown" }

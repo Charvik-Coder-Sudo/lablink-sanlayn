@@ -63,7 +63,7 @@ function AccessoriesListPage() {
 
   const enriched: EnrichedRow[] = useMemo(() => rows.map((a) => {
     const availability: EquipmentAvailability = a.status !== "active"
-      ? { state: "unavailable", totalQty: a.quantity, availableQty: 0, currentBookings: [], reasonLabel: a.status === "maintenance" ? "Under maintenance" : "Retired" }
+      ? { state: "unavailable", totalQty: a.quantity, availableQty: 0, currentBookings: [], bookedQty: 0, reasonLabel: a.status === "maintenance" ? "Under maintenance" : "Retired" }
       : computeAccessoryAvailability(bookingSlots.data?.[a.id] ?? [], a.quantity);
     return { ...a, availability };
   }), [rows, bookingSlots.data]);
@@ -119,8 +119,8 @@ function AccessoriesListPage() {
               <SelectContent>
                 <SelectItem value="all">All availability</SelectItem>
                 <SelectItem value="available">🟢 Available</SelectItem>
-                <SelectItem value="limited">🟡 Limited</SelectItem>
-                <SelectItem value="fully_booked">🔴 Fully Booked</SelectItem>
+                <SelectItem value="limited">🟡 Partially Available</SelectItem>
+                <SelectItem value="fully_booked">🔴 Unavailable</SelectItem>
                 <SelectItem value="unavailable">⚫ Under maintenance</SelectItem>
               </SelectContent>
             </Select>

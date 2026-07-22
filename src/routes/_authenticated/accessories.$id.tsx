@@ -37,8 +37,6 @@ function AccessoryDetailPage() {
   const [quantity, setQuantity] = useState(1);
   const [projectName, setProjectName] = useState("");
   const [purpose, setPurpose] = useState("");
-  const [remarks, setRemarks] = useState("");
-  const [expectedReturnDate, setExpectedReturnDate] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
 
   const accessory = useQuery({ queryKey: ["accessory", id], queryFn: () => getAccessory(id) });
@@ -78,15 +76,11 @@ function AccessoryDetailPage() {
       quantity: number;
       project_name: string;
       purpose: string;
-      remarks?: string;
-      expected_return_date?: string;
     }) => createAccessoryBooking(input),
     onSuccess: () => {
       toast.success("Booking confirmed");
       setProjectName("");
       setPurpose("");
-      setRemarks("");
-      setExpectedReturnDate("");
       setValidationError(null);
       qc.invalidateQueries({ queryKey: ["accessory-schedule", id] });
       qc.invalidateQueries({ queryKey: ["accessory-avail", id] });
@@ -106,7 +100,6 @@ function AccessoryDetailPage() {
         accessory_not_found: "Accessory not found",
         project_name_required: "Project name is required",
         purpose_required: "Purpose is required",
-        invalid_expected_return_date: "Expected return date can't be before the start date",
       };
       toast.error(map[e.message] ?? e.message);
     },
@@ -141,8 +134,6 @@ function AccessoryDetailPage() {
       quantity,
       project_name: projectName,
       purpose,
-      remarks: remarks || undefined,
-      expected_return_date: expectedReturnDate || undefined,
     });
   }
 
@@ -195,14 +186,12 @@ function AccessoryDetailPage() {
             <div><Label>Quantity Required</Label><Input type="number" min={1} max={a.quantity} value={quantity} onChange={(ev) => setQuantity(parseInt(ev.target.value || "1", 10))} /></div>
             <div><Label>Project Name</Label><Input required value={projectName} onChange={(ev) => setProjectName(ev.target.value)} placeholder="e.g. Radar Automation" /></div>
             <div><Label>Purpose</Label><Textarea rows={2} required value={purpose} onChange={(ev) => setPurpose(ev.target.value)} placeholder="e.g. Bench test setup" /></div>
-            <div><Label>Expected Return Date <span className="text-muted-foreground font-normal">(optional)</span></Label><Input type="date" min={fromDate || today} value={expectedReturnDate} onChange={(ev) => setExpectedReturnDate(ev.target.value)} /></div>
-            <div><Label>Remarks <span className="text-muted-foreground font-normal">(optional)</span></Label><Textarea rows={2} value={remarks} onChange={(ev) => setRemarks(ev.target.value)} placeholder="Any additional notes" /></div>
             <div className="rounded-md border border-border/60 bg-muted/30 p-3">
               <div className="font-medium text-sm">{a.description}</div>
               <div className="mt-2">
                 <EquipmentAvailabilityBadge
                   availability={a.status !== "active"
-                    ? { state: "unavailable", totalQty: a.quantity, availableQty: 0, currentBookings: [], reasonLabel: a.status === "maintenance" ? "Under maintenance" : "Retired" }
+                    ? { state: "unavailable", totalQty: a.quantity, availableQty: 0, currentBookings: [], bookedQty: 0, reasonLabel: a.status === "maintenance" ? "Under maintenance" : "Retired" }
                     : liveAvailability}
                 />
               </div>

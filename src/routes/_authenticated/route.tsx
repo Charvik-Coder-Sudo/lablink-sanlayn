@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   LayoutDashboard, Boxes, Wrench, CalendarCheck2, BarChart3, Users, UploadCloud,
-  ClipboardList, User, LogOut, MoreHorizontal,
+  ClipboardList, User, LogOut, MoreHorizontal, History,
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -34,6 +34,7 @@ const NAV: NavItem[] = [
   { to: "/accessories", label: "Accessories", icon: Wrench },
   { to: "/bookings", label: "Bookings", icon: CalendarCheck2 },
   { to: "/reports", label: "Reports", icon: BarChart3, roles: ["admin", "manager"] },
+  { to: "/admin/usage", label: "Usage History", icon: History, roles: ["admin", "manager"] },
   { to: "/admin/users", label: "Users", icon: Users, roles: ["admin"] },
   { to: "/admin/import", label: "Import Users", icon: UploadCloud, roles: ["admin"] },
   { to: "/admin/audit", label: "Audit Log", icon: ClipboardList, roles: ["admin"] },

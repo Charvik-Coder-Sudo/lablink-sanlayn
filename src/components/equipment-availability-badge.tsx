@@ -3,8 +3,8 @@ import type { EquipmentAvailability } from "@/lib/equipment-availability";
 
 export const AVAILABILITY_CONFIG: Record<EquipmentAvailability["state"], { dot: string; text: string; emoji: string; label: (a: EquipmentAvailability) => string }> = {
   available: { dot: "bg-emerald-500", text: "text-emerald-700 dark:text-emerald-400", emoji: "🟢", label: () => "Available" },
-  limited: { dot: "bg-amber-500", text: "text-amber-700 dark:text-amber-400", emoji: "🟡", label: (a) => `Available (${a.availableQty} Left)` },
-  fully_booked: { dot: "bg-red-500", text: "text-red-700 dark:text-red-400", emoji: "🔴", label: () => "Fully Booked" },
+  limited: { dot: "bg-amber-500", text: "text-amber-700 dark:text-amber-400", emoji: "🟡", label: (a) => `Partially Available (${a.availableQty} of ${a.totalQty})` },
+  fully_booked: { dot: "bg-red-500", text: "text-red-700 dark:text-red-400", emoji: "🔴", label: () => "Unavailable" },
   unavailable: { dot: "bg-slate-500", text: "text-muted-foreground", emoji: "⚫", label: () => "Under Maintenance" },
 };
 

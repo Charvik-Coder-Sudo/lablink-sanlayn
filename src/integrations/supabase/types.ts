@@ -102,12 +102,10 @@ export type Database = {
           created_by: string | null
           end_date: string
           end_time: string
-          expected_return_date: string | null
           id: string
           project_name: string
           purpose: string
           quantity: number
-          remarks: string | null
           return_reason: string | null
           returned_at: string | null
           returned_by: string | null
@@ -127,12 +125,10 @@ export type Database = {
           created_by?: string | null
           end_date: string
           end_time: string
-          expected_return_date?: string | null
           id?: string
           project_name: string
           purpose: string
           quantity: number
-          remarks?: string | null
           return_reason?: string | null
           returned_at?: string | null
           returned_by?: string | null
@@ -152,12 +148,10 @@ export type Database = {
           created_by?: string | null
           end_date?: string
           end_time?: string
-          expected_return_date?: string | null
           id?: string
           project_name?: string
           purpose?: string
           quantity?: number
-          remarks?: string | null
           return_reason?: string | null
           returned_at?: string | null
           returned_by?: string | null
@@ -202,12 +196,10 @@ export type Database = {
           end_date: string
           end_time: string
           equipment_id: string
-          expected_return_date: string | null
           id: string
           project_name: string
           purpose: string
           quantity: number
-          remarks: string | null
           return_reason: string | null
           returned_at: string | null
           returned_by: string | null
@@ -227,12 +219,10 @@ export type Database = {
           end_date: string
           end_time: string
           equipment_id: string
-          expected_return_date?: string | null
           id?: string
           project_name: string
           purpose: string
           quantity: number
-          remarks?: string | null
           return_reason?: string | null
           returned_at?: string | null
           returned_by?: string | null
@@ -252,12 +242,10 @@ export type Database = {
           end_date?: string
           end_time?: string
           equipment_id?: string
-          expected_return_date?: string | null
           id?: string
           project_name?: string
           purpose?: string
           quantity?: number
-          remarks?: string | null
           return_reason?: string | null
           returned_at?: string | null
           returned_by?: string | null
@@ -297,7 +285,7 @@ export type Database = {
           calibration_due_date: string | null
           category: string
           created_at: string
-          equipment_code: string
+          equipment_code: string | null
           id: string
           lab_location: string
           manufacturer: string | null
@@ -314,7 +302,7 @@ export type Database = {
           calibration_due_date?: string | null
           category: string
           created_at?: string
-          equipment_code: string
+          equipment_code?: string | null
           id?: string
           lab_location: string
           manufacturer?: string | null
@@ -331,7 +319,7 @@ export type Database = {
           calibration_due_date?: string | null
           category?: string
           created_at?: string
-          equipment_code?: string
+          equipment_code?: string | null
           id?: string
           lab_location?: string
           manufacturer?: string | null
@@ -432,12 +420,10 @@ export type Database = {
           _booking_id: string
           _end: string
           _end_date: string
-          _expected_return_date?: string | null
           _override?: boolean
           _project_name: string
           _purpose: string
           _quantity: number
-          _remarks?: string | null
           _start: string
         }
         Returns: Database["public"]["Tables"]["accessory_bookings"]["Row"]
@@ -454,12 +440,10 @@ export type Database = {
           _booking_id: string
           _end: string
           _end_date: string
-          _expected_return_date?: string | null
           _override?: boolean
           _project_name: string
           _purpose: string
           _quantity: number
-          _remarks?: string | null
           _start: string
         }
         Returns: Database["public"]["Tables"]["bookings"]["Row"]
@@ -496,11 +480,9 @@ export type Database = {
           _booking_date: string
           _end: string
           _end_date: string
-          _expected_return_date?: string | null
           _project_name: string
           _purpose: string
           _quantity: number
-          _remarks?: string | null
           _start: string
         }
         Returns: Database["public"]["Tables"]["accessory_bookings"]["Row"]
@@ -517,11 +499,9 @@ export type Database = {
           _end: string
           _end_date: string
           _equipment_id: string
-          _expected_return_date?: string | null
           _project_name: string
           _purpose: string
           _quantity: number
-          _remarks?: string | null
           _start: string
         }
         Returns: Database["public"]["Tables"]["bookings"]["Row"]

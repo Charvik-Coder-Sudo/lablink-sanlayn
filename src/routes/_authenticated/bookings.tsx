@@ -111,8 +111,6 @@ function BookingsPage() {
       "End Time": b.end_time,
       Quantity: b.quantity,
       Status: computeBookingDisplayStatus(b),
-      "Expected Return": b.expected_return_date ?? "",
-      Remarks: b.remarks ?? "",
       "Created At": b.created_at,
       "Returned At": b.returned_at ?? "",
       "Cancelled At": b.cancelled_at ?? "",
@@ -323,8 +321,6 @@ function EditBookingDialog({ booking, onDone }: { booking: BookingRow; onDone: (
   const [endTime, setEndTime] = useState(booking.end_time.slice(0, 5));
   const [projectName, setProjectName] = useState(booking.project_name);
   const [purpose, setPurpose] = useState(booking.purpose);
-  const [remarks, setRemarks] = useState(booking.remarks ?? "");
-  const [expectedReturnDate, setExpectedReturnDate] = useState(booking.expected_return_date ?? "");
   const [override, setOverride] = useState(false);
 
   const mut = useMutation({
@@ -337,8 +333,6 @@ function EditBookingDialog({ booking, onDone }: { booking: BookingRow; onDone: (
       end_time: endTime,
       project_name: projectName,
       purpose,
-      remarks: remarks || undefined,
-      expected_return_date: expectedReturnDate || undefined,
       override,
     }),
     onSuccess: () => { toast.success("Booking updated"); setOpen(false); onDone(); },
@@ -368,10 +362,8 @@ function EditBookingDialog({ booking, onDone }: { booking: BookingRow; onDone: (
           <div className="space-y-1.5"><Label>Start</Label><Input type="time" required value={startTime} onChange={(e) => setStartTime(e.target.value)} /></div>
           <div className="space-y-1.5"><Label>End</Label><Input type="time" required value={endTime} onChange={(e) => setEndTime(e.target.value)} /></div>
           <div className="space-y-1.5"><Label>Quantity</Label><Input type="number" min={1} required value={quantity} onChange={(e) => setQuantity(parseInt(e.target.value || "1", 10))} /></div>
-          <div className="space-y-1.5"><Label>Expected Return Date</Label><Input type="date" value={expectedReturnDate} onChange={(e) => setExpectedReturnDate(e.target.value)} /></div>
           <div className="space-y-1.5 sm:col-span-2"><Label>Project Name</Label><Input required value={projectName} onChange={(e) => setProjectName(e.target.value)} /></div>
           <div className="space-y-1.5 sm:col-span-2"><Label>Purpose</Label><Textarea rows={2} required value={purpose} onChange={(e) => setPurpose(e.target.value)} /></div>
-          <div className="space-y-1.5 sm:col-span-2"><Label>Remarks</Label><Textarea rows={2} value={remarks} onChange={(e) => setRemarks(e.target.value)} /></div>
           <div className="flex items-center gap-2 sm:col-span-2">
             <Checkbox id="override" checked={override} onCheckedChange={(v) => setOverride(v === true)} />
             <Label htmlFor="override" className="text-sm font-normal">Override conflicts (skip quantity/availability check)</Label>

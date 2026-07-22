@@ -20,6 +20,7 @@ import { Route as AuthenticatedEquipmentIndexRouteImport } from './routes/_authe
 import { Route as AuthenticatedAccessoriesIndexRouteImport } from './routes/_authenticated/accessories.index'
 import { Route as AuthenticatedEquipmentIdRouteImport } from './routes/_authenticated/equipment.$id'
 import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin/users'
+import { Route as AuthenticatedAdminUsageRouteImport } from './routes/_authenticated/admin/usage'
 import { Route as AuthenticatedAdminImportRouteImport } from './routes/_authenticated/admin/import'
 import { Route as AuthenticatedAdminAuditRouteImport } from './routes/_authenticated/admin/audit'
 import { Route as AuthenticatedAccessoriesIdRouteImport } from './routes/_authenticated/accessories.$id'
@@ -81,6 +82,11 @@ const AuthenticatedAdminUsersRoute = AuthenticatedAdminUsersRouteImport.update({
   path: '/admin/users',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedAdminUsageRoute = AuthenticatedAdminUsageRouteImport.update({
+  id: '/admin/usage',
+  path: '/admin/usage',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedAdminImportRoute =
   AuthenticatedAdminImportRouteImport.update({
     id: '/admin/import',
@@ -109,6 +115,7 @@ export interface FileRoutesByFullPath {
   '/accessories/$id': typeof AuthenticatedAccessoriesIdRoute
   '/admin/audit': typeof AuthenticatedAdminAuditRoute
   '/admin/import': typeof AuthenticatedAdminImportRoute
+  '/admin/usage': typeof AuthenticatedAdminUsageRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/equipment/$id': typeof AuthenticatedEquipmentIdRoute
   '/accessories/': typeof AuthenticatedAccessoriesIndexRoute
@@ -124,6 +131,7 @@ export interface FileRoutesByTo {
   '/accessories/$id': typeof AuthenticatedAccessoriesIdRoute
   '/admin/audit': typeof AuthenticatedAdminAuditRoute
   '/admin/import': typeof AuthenticatedAdminImportRoute
+  '/admin/usage': typeof AuthenticatedAdminUsageRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/equipment/$id': typeof AuthenticatedEquipmentIdRoute
   '/accessories': typeof AuthenticatedAccessoriesIndexRoute
@@ -141,6 +149,7 @@ export interface FileRoutesById {
   '/_authenticated/accessories/$id': typeof AuthenticatedAccessoriesIdRoute
   '/_authenticated/admin/audit': typeof AuthenticatedAdminAuditRoute
   '/_authenticated/admin/import': typeof AuthenticatedAdminImportRoute
+  '/_authenticated/admin/usage': typeof AuthenticatedAdminUsageRoute
   '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
   '/_authenticated/equipment/$id': typeof AuthenticatedEquipmentIdRoute
   '/_authenticated/accessories/': typeof AuthenticatedAccessoriesIndexRoute
@@ -158,6 +167,7 @@ export interface FileRouteTypes {
     | '/accessories/$id'
     | '/admin/audit'
     | '/admin/import'
+    | '/admin/usage'
     | '/admin/users'
     | '/equipment/$id'
     | '/accessories/'
@@ -173,6 +183,7 @@ export interface FileRouteTypes {
     | '/accessories/$id'
     | '/admin/audit'
     | '/admin/import'
+    | '/admin/usage'
     | '/admin/users'
     | '/equipment/$id'
     | '/accessories'
@@ -189,6 +200,7 @@ export interface FileRouteTypes {
     | '/_authenticated/accessories/$id'
     | '/_authenticated/admin/audit'
     | '/_authenticated/admin/import'
+    | '/_authenticated/admin/usage'
     | '/_authenticated/admin/users'
     | '/_authenticated/equipment/$id'
     | '/_authenticated/accessories/'
@@ -280,6 +292,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminUsersRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/admin/usage': {
+      id: '/_authenticated/admin/usage'
+      path: '/admin/usage'
+      fullPath: '/admin/usage'
+      preLoaderRoute: typeof AuthenticatedAdminUsageRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/admin/import': {
       id: '/_authenticated/admin/import'
       path: '/admin/import'
@@ -312,6 +331,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAccessoriesIdRoute: typeof AuthenticatedAccessoriesIdRoute
   AuthenticatedAdminAuditRoute: typeof AuthenticatedAdminAuditRoute
   AuthenticatedAdminImportRoute: typeof AuthenticatedAdminImportRoute
+  AuthenticatedAdminUsageRoute: typeof AuthenticatedAdminUsageRoute
   AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRoute
   AuthenticatedEquipmentIdRoute: typeof AuthenticatedEquipmentIdRoute
   AuthenticatedAccessoriesIndexRoute: typeof AuthenticatedAccessoriesIndexRoute
@@ -326,6 +346,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAccessoriesIdRoute: AuthenticatedAccessoriesIdRoute,
   AuthenticatedAdminAuditRoute: AuthenticatedAdminAuditRoute,
   AuthenticatedAdminImportRoute: AuthenticatedAdminImportRoute,
+  AuthenticatedAdminUsageRoute: AuthenticatedAdminUsageRoute,
   AuthenticatedAdminUsersRoute: AuthenticatedAdminUsersRoute,
   AuthenticatedEquipmentIdRoute: AuthenticatedEquipmentIdRoute,
   AuthenticatedAccessoriesIndexRoute: AuthenticatedAccessoriesIndexRoute,

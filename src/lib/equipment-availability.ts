@@ -28,15 +28,31 @@ export interface CurrentBooking {
   department: string | null;
   projectName: string;
   quantity: number;
+  fromLabel: string;
   returnsAtLabel: string;
+}
+
+/** Minimal slot shape shared by equipment and accessory bookings, for slot-availability math. */
+export interface SlotForAvailability {
+  id: string;
+  user_id: string;
+  booking_date: string;
+  end_date: string;
+  start_time: string;
+  end_time: string;
+  quantity: number;
+  project_name: string;
+  profile?: { full_name?: string | null; department?: string | null } | null;
 }
 
 export interface EquipmentAvailability {
   state: AvailabilityState;
   totalQty: number;
   availableQty: number;
+  bookedQty: number;
   currentBookings: CurrentBooking[];
   nextReservation?: { fromLabel: string; name: string };
+  nextAvailableLabel?: string;
   reasonLabel?: string;
 }
 
@@ -59,30 +75,57 @@ function formatSlotLabel(dateStr: string, timeStr: string, now: Date): string {
   return `${dayLabel(dateStr, now)} ${format(combineDateTime(dateStr, timeStr), "h:mm a")}`;
 }
 
-/** Fetches active ("booked") slots for the given equipment ids, covering today and tomorrow. */
+interface RawSlotRow {
+  id: string;
+  equipment_id: string;
+  user_id: string;
+  booking_date: string;
+  end_date: string;
+  start_time: string;
+  end_time: string;
+  quantity: number;
+  project_name: string;
+  full_name: string | null;
+  department: string | null;
+}
+
+/**
+ * Fetches active ("booked") slots for the given equipment ids, overlapping [from, to]
+ * (default: today..tomorrow). Uses the SECURITY DEFINER `equipment_booking_slots` RPC so
+ * EVERY authenticated user sees the true booking state — a normal user's direct table read
+ * is restricted by RLS to their own rows, which would make availability under-count and
+ * hide the current borrower. The RPC returns only non-sensitive fields.
+ */
 export async function fetchEquipmentBookingSlots(
   equipmentIds: string[],
-  opts?: { now?: Date },
+  opts?: { now?: Date; from?: string; to?: string },
 ): Promise<Record<string, BookingSlot[]>> {
   if (equipmentIds.length === 0) return {};
   const now = opts?.now ?? new Date();
-  const todayStr = format(now, "yyyy-MM-dd");
-  const tomorrowStr = format(addDays(now, 1), "yyyy-MM-dd");
+  const from = opts?.from ?? format(now, "yyyy-MM-dd");
+  const to = opts?.to ?? format(addDays(now, 1), "yyyy-MM-dd");
 
-  const { data, error } = await supabase
-    .from("bookings")
-    .select("id,equipment_id,user_id,booking_date,end_date,start_time,end_time,quantity,project_name,profile:profiles!bookings_user_profile_fk(full_name,department)")
-    .in("equipment_id", equipmentIds)
-    .eq("status", "booked")
-    .lte("booking_date", tomorrowStr)
-    .gte("end_date", todayStr)
-    .order("booking_date", { ascending: true })
-    .order("start_time", { ascending: true });
+  const { data, error } = await supabase.rpc("equipment_booking_slots", {
+    _equipment_ids: equipmentIds,
+    _from: from,
+    _to: to,
+  });
   if (error) throw error;
 
   const map: Record<string, BookingSlot[]> = {};
-  for (const row of (data ?? []) as BookingSlot[]) {
-    (map[row.equipment_id] ??= []).push(row);
+  for (const row of (data ?? []) as RawSlotRow[]) {
+    (map[row.equipment_id] ??= []).push({
+      id: row.id,
+      equipment_id: row.equipment_id,
+      user_id: row.user_id,
+      booking_date: row.booking_date,
+      end_date: row.end_date,
+      start_time: row.start_time,
+      end_time: row.end_time,
+      quantity: row.quantity,
+      project_name: row.project_name,
+      profile: { full_name: row.full_name, department: row.department },
+    });
   }
   return map;
 }
@@ -115,6 +158,7 @@ export function computeEquipmentAvailability(
       department: b.profile?.department ?? null,
       projectName: b.project_name,
       quantity: b.quantity,
+      fromLabel: formatSlotLabel(b.booking_date, b.start_time, now),
       returnsAtLabel: formatSlotLabel(b.end_date, b.end_time, now),
     }));
 
@@ -126,11 +170,59 @@ export function computeEquipmentAvailability(
     state,
     totalQty: totalQuantity,
     availableQty,
+    bookedQty,
     currentBookings,
     nextReservation: upcoming
       ? { fromLabel: formatSlotLabel(upcoming.booking_date, upcoming.start_time, now), name: upcoming.profile?.full_name ?? "Unknown" }
       : undefined,
   };
+}
+
+/**
+ * Quantity-driven availability for a SPECIFIC requested slot (the booking form's selected
+ * from/to/start/end), computed from the bookings overlapping that slot. Mirrors the exact
+ * overlap rule the create_booking RPC enforces, so the UI never disagrees with the backend.
+ * Returns an EquipmentAvailability so it can drive the shared availability badge.
+ */
+export function computeSlotAvailability(
+  slots: SlotForAvailability[],
+  totalQuantity: number,
+  from: string,
+  to: string,
+  start: string,
+  end: string,
+  now: Date = new Date(),
+): EquipmentAvailability {
+  const reqStart = combineDateTime(from, start);
+  const reqEnd = combineDateTime(to, end);
+  const overlapping = slots.filter((b) => {
+    const bStart = combineDateTime(b.booking_date, b.start_time);
+    const bEnd = combineDateTime(b.end_date, b.end_time);
+    return bStart < reqEnd && bEnd > reqStart;
+  });
+  const bookedQty = overlapping.reduce((sum, b) => sum + b.quantity, 0);
+  const availableQty = Math.max(0, totalQuantity - bookedQty);
+  const state: AvailabilityState = bookedQty <= 0 ? "available" : availableQty <= 0 ? "fully_booked" : "limited";
+
+  const sorted = [...overlapping].sort(
+    (a, b) => combineDateTime(a.end_date, a.end_time).getTime() - combineDateTime(b.end_date, b.end_time).getTime(),
+  );
+  const currentBookings: CurrentBooking[] = sorted.map((b) => ({
+    bookingId: b.id,
+    userId: b.user_id,
+    name: b.profile?.full_name ?? "Unknown",
+    department: b.profile?.department ?? null,
+    projectName: b.project_name,
+    quantity: b.quantity,
+    returnsAtLabel: formatSlotLabel(b.end_date, b.end_time, now),
+  }));
+
+  // When fully booked, the next opening is when the earliest-ending overlapping booking frees up.
+  const nextAvailableLabel = state === "fully_booked" && sorted.length > 0
+    ? formatSlotLabel(sorted[0].end_date, sorted[0].end_time, now)
+    : undefined;
+
+  return { state, totalQty: totalQuantity, availableQty, bookedQty, currentBookings, nextAvailableLabel };
 }
 
 /** Units not currently tied up by an in-progress booking, right now. Equal to computeEquipmentAvailability(...).availableQty. */

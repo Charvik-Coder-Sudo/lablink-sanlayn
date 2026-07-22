@@ -3,7 +3,7 @@ import { logAudit } from "./audit";
 import { extractSupabaseError, type SupabaseErrorInfo } from "./supabase-errors";
 
 export interface EquipmentInput {
-  equipment_code: string;
+  equipment_code: string | null;
   name: string;
   category: string;
   manufacturer?: string | null;
@@ -37,15 +37,25 @@ export async function getEquipment(id: string) {
   return data;
 }
 
+// Asset ID is optional; a blank code is stored as NULL so blanks never collide under the
+// UNIQUE constraint (Postgres permits multiple NULLs).
+function normalizeCode<T extends { equipment_code?: string | null }>(input: T): T {
+  if ("equipment_code" in input) {
+    const code = (input.equipment_code ?? "").trim();
+    return { ...input, equipment_code: code === "" ? null : code };
+  }
+  return input;
+}
+
 export async function createEquipment(input: EquipmentInput) {
-  const { data, error } = await supabase.from("equipment").insert(input as never).select().single();
+  const { data, error } = await supabase.from("equipment").insert(normalizeCode(input) as never).select().single();
   if (error) throw error;
   await logAudit("equipment_added", `Added ${data.name}`, { equipment_id: data.id });
   return data;
 }
 
 export async function updateEquipment(id: string, input: Partial<EquipmentInput>) {
-  const { data, error } = await supabase.from("equipment").update(input as never).eq("id", id).select().single();
+  const { data, error } = await supabase.from("equipment").update(normalizeCode(input) as never).eq("id", id).select().single();
   if (error) throw error;
   await logAudit("equipment_updated", `Updated ${data.name}`, { equipment_id: id });
   return data;
@@ -72,7 +82,7 @@ export async function fetchExistingEquipmentKeys(): Promise<{ codes: Set<string>
 
 export interface EquipmentImportRow {
   rowNumber: number;
-  equipment_code: string;
+  equipment_code: string | null;
   name: string;
   category: string;
   manufacturer: string | null;
@@ -103,24 +113,26 @@ export async function bulkImportEquipment(
   const results: EquipmentImportResult[] = [];
 
   for (const row of rows) {
-    const codeKey = row.equipment_code.trim().toLowerCase();
+    // Asset ID is optional: an empty/absent code is stored as NULL and is never treated as
+    // a duplicate of another blank (Postgres allows many NULLs under the UNIQUE constraint).
+    const codeKey = (row.equipment_code ?? "").trim().toLowerCase();
     const serialKey = row.serial_number.trim().toLowerCase();
     const dupReasons: string[] = [];
-    if (existingCodes.has(codeKey) || seenCodes.has(codeKey)) dupReasons.push("Asset ID already exists");
-    if (existingSerials.has(serialKey) || seenSerials.has(serialKey)) dupReasons.push("Device Serial Number already exists");
+    if (codeKey && (existingCodes.has(codeKey) || seenCodes.has(codeKey))) dupReasons.push("Asset ID already exists");
+    if (serialKey && (existingSerials.has(serialKey) || seenSerials.has(serialKey))) dupReasons.push("Device Serial Number already exists");
 
     if (dupReasons.length > 0) {
       results.push({ row: row.rowNumber, description: row.name, status: "skipped", duplicate: true, reason: dupReasons.join("; ") });
       onProgress?.(results.length, rows.length);
       continue;
     }
-    seenCodes.add(codeKey);
-    seenSerials.add(serialKey);
+    if (codeKey) seenCodes.add(codeKey);
+    if (serialKey) seenSerials.add(serialKey);
 
     const { rowNumber, ...payload } = row;
     console.log(`[equipment import] row ${rowNumber} payload:`, payload);
     try {
-      const { error } = await supabase.from("equipment").insert({ ...payload, status: "active" } as never);
+      const { error } = await supabase.from("equipment").insert({ ...payload, equipment_code: codeKey ? row.equipment_code : null, status: "active" } as never);
       if (error) {
         const info = extractSupabaseError(error);
         console.error(`[equipment import] row ${rowNumber} insert error:`, info, error);

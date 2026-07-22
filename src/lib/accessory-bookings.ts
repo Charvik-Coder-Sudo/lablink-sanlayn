@@ -10,8 +10,6 @@ export interface AccessoryBookingInput {
   quantity: number;
   project_name: string;
   purpose: string;
-  remarks?: string;
-  expected_return_date?: string;
 }
 
 export async function createAccessoryBooking(input: AccessoryBookingInput) {
@@ -36,8 +34,6 @@ export async function createAccessoryBooking(input: AccessoryBookingInput) {
     _quantity: input.quantity,
     _project_name: input.project_name,
     _purpose: input.purpose,
-    _remarks: input.remarks || null,
-    _expected_return_date: input.expected_return_date || null,
   });
   if (error) throw error;
   return data;
@@ -52,8 +48,6 @@ export interface AdminUpdateAccessoryBookingInput {
   end_time: string;
   project_name: string;
   purpose: string;
-  remarks?: string;
-  expected_return_date?: string;
   override?: boolean;
 }
 
@@ -67,8 +61,6 @@ export async function adminUpdateAccessoryBooking(input: AdminUpdateAccessoryBoo
     _end: input.end_time,
     _project_name: input.project_name,
     _purpose: input.purpose,
-    _remarks: input.remarks || null,
-    _expected_return_date: input.expected_return_date || null,
     _override: input.override ?? false,
   });
   if (error) throw error;

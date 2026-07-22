@@ -202,3 +202,102 @@ export function computeBookingHeatmap(rows: BookingAnalyticsRow[]): { matrix: nu
   }
   return { matrix, dayLabels: DAY_LABELS, maxValue };
 }
+
+// === FEATURE 11 — Employee Usage History ====================================
+export interface EmployeeUsageRow {
+  userId: string;
+  name: string;
+  employeeId: string;
+  department: string;
+  totalBookings: number;
+  currentBookings: number;   // status 'booked', in-progress right now
+  completedBookings: number; // status 'returned'/'completed'
+  cancelledBookings: number; // status 'cancelled'
+  avgDurationHours: number;  // mean scheduled duration across all bookings
+  mostUsedEquipment: string;
+  lastBookingDate: string | null;
+  equipmentUsedCount: number; // distinct items booked
+}
+
+interface RawUsageBooking {
+  user_id: string;
+  status: string;
+  booking_date: string;
+  end_date: string;
+  start_time: string;
+  end_time: string;
+  itemName: string;
+}
+
+function durationHours(b: RawUsageBooking): number {
+  const start = new Date(`${b.booking_date}T${b.start_time}`).getTime();
+  const end = new Date(`${b.end_date}T${b.end_time}`).getTime();
+  const h = (end - start) / 3_600_000;
+  return Number.isFinite(h) && h > 0 ? h : 0;
+}
+
+/**
+ * Per-employee laboratory usage history, aggregated across equipment AND accessory
+ * bookings. Availability/counts are derived from raw booking rows (never stored) so the
+ * report is always consistent with the live booking table.
+ */
+export async function fetchEmployeeUsageHistory(now: Date = new Date()): Promise<EmployeeUsageRow[]> {
+  const [profilesRes, eqRes, accRes] = await Promise.all([
+    supabase.from("profiles").select("id,full_name,employee_id,department").eq("is_active", true),
+    supabase.from("bookings").select("user_id,status,booking_date,end_date,start_time,end_time,equipment:equipment_id(name)"),
+    supabase.from("accessory_bookings").select("user_id,status,booking_date,end_date,start_time,end_time,accessory:accessory_id(description)"),
+  ]);
+
+  const raw: RawUsageBooking[] = [];
+  for (const b of eqRes.data ?? []) {
+    raw.push({ user_id: b.user_id, status: b.status, booking_date: b.booking_date, end_date: b.end_date, start_time: b.start_time, end_time: b.end_time, itemName: b.equipment?.name ?? "—" });
+  }
+  for (const b of accRes.data ?? []) {
+    raw.push({ user_id: b.user_id, status: b.status, booking_date: b.booking_date, end_date: b.end_date, start_time: b.start_time, end_time: b.end_time, itemName: b.accessory?.description ?? "—" });
+  }
+
+  const byUser = new Map<string, RawUsageBooking[]>();
+  for (const b of raw) {
+    const arr = byUser.get(b.user_id) ?? [];
+    arr.push(b);
+    byUser.set(b.user_id, arr);
+  }
+
+  const rows: EmployeeUsageRow[] = (profilesRes.data ?? []).map((p) => {
+    const bookings = byUser.get(p.id) ?? [];
+    const completed = bookings.filter((b) => b.status === "returned" || b.status === "completed").length;
+    const cancelled = bookings.filter((b) => b.status === "cancelled").length;
+    const current = bookings.filter((b) => {
+      if (b.status !== "booked") return false;
+      const start = new Date(`${b.booking_date}T${b.start_time}`);
+      const end = new Date(`${b.end_date}T${b.end_time}`);
+      return start <= now && now < end;
+    }).length;
+
+    const durations = bookings.map(durationHours).filter((h) => h > 0);
+    const avgDuration = durations.length ? durations.reduce((a, b) => a + b, 0) / durations.length : 0;
+
+    const itemCounts: Record<string, number> = {};
+    for (const b of bookings) itemCounts[b.itemName] = (itemCounts[b.itemName] ?? 0) + 1;
+    const mostUsed = Object.entries(itemCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "—";
+
+    const lastBooking = bookings.map((b) => b.booking_date).sort().at(-1) ?? null;
+
+    return {
+      userId: p.id,
+      name: p.full_name,
+      employeeId: p.employee_id,
+      department: p.department ?? "Unassigned",
+      totalBookings: bookings.length,
+      currentBookings: current,
+      completedBookings: completed,
+      cancelledBookings: cancelled,
+      avgDurationHours: Math.round(avgDuration * 10) / 10,
+      mostUsedEquipment: mostUsed,
+      lastBookingDate: lastBooking,
+      equipmentUsedCount: Object.keys(itemCounts).length,
+    };
+  });
+
+  return rows.sort((a, b) => b.totalBookings - a.totalBookings);
+}
