@@ -1,9 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useServerFn } from "@tanstack/react-start";
 import { getEquipment } from "@/lib/equipment";
-import { equipmentDaySchedule } from "@/lib/bookings";
-import { createBookingServerFn } from "@/lib/bookings.server";
+import { createBooking, equipmentDaySchedule } from "@/lib/bookings";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchEquipmentBookingSlots, computeEquipmentAvailability } from "@/lib/equipment-availability";
 import { EquipmentAvailabilityBadge } from "@/components/equipment-availability-badge";
@@ -39,7 +37,6 @@ function EquipmentDetailPage() {
   const [purpose, setPurpose] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  const submitBooking = useServerFn(createBookingServerFn);
   const equipment = useQuery({ queryKey: ["equipment", id], queryFn: () => getEquipment(id) });
   const schedule = useQuery({ queryKey: ["schedule", id, fromDate], queryFn: () => equipmentDaySchedule(id, fromDate) });
   const availability = useQuery({
@@ -70,7 +67,7 @@ function EquipmentDetailPage() {
       end_time: string;
       quantity: number;
       purpose: string;
-    }) => submitBooking({ data: input }),
+    }) => createBooking(input),
     onSuccess: () => {
       toast.success("Booking created");
       setPurpose("");
@@ -87,6 +84,9 @@ function EquipmentDetailPage() {
         cannot_book_in_past: "Cannot book in the past",
         insufficient_quantity: "Not enough equipment available for that slot",
         equipment_unavailable: "Equipment is not available for booking",
+        duplicate_booking: "You already have an overlapping booking for this equipment",
+        not_authenticated: "You must be signed in to book equipment",
+        equipment_not_found: "Equipment not found",
       };
       toast.error(map[e.message] ?? e.message);
     },
@@ -101,8 +101,26 @@ function EquipmentDetailPage() {
   const liveAvailability = computeEquipmentAvailability(currentStatus.data?.[id] ?? [], e.total_quantity);
   const canSubmit = Boolean(purpose.trim()) && rangeValidation.isValid && (availability.data ?? 0) >= quantity && e.status === "active";
 
+  function submitBooking() {
+    const validationResult = validateBookingDateTimeRange({ fromDate, toDate, startTime, endTime });
+    if (!validationResult.isValid) {
+      setValidationError(validationResult.error ?? null);
+      return;
+    }
+    setValidationError(null);
+    book.mutate({
+      equipment_id: id,
+      booking_date: fromDate,
+      end_date: toDate,
+      start_time: startTime,
+      end_time: endTime,
+      quantity,
+      purpose,
+    });
+  }
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-20 md:pb-0">
       <Link to="/equipment" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" /> Back to equipment</Link>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -111,10 +129,10 @@ function EquipmentDetailPage() {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="text-xs font-mono text-muted-foreground">{e.equipment_code}</div>
-                <CardTitle className="text-xl">{e.name}</CardTitle>
+                <CardTitle className="text-lg sm:text-xl">{e.name}</CardTitle>
                 <div className="text-sm text-muted-foreground mt-0.5">{e.category} · {e.lab_location}</div>
               </div>
-              <Badge variant={e.status === "active" ? "default" : "secondary"} className="capitalize">{e.status}</Badge>
+              <Badge variant={e.status === "active" ? "default" : "secondary"} className="capitalize shrink-0">{e.status}</Badge>
             </div>
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-2 text-sm">
@@ -158,32 +176,25 @@ function EquipmentDetailPage() {
             <div className="text-xs text-muted-foreground">Available for selected slot: <span className="font-medium text-foreground">{availability.data ?? "—"}</span></div>
             {!rangeValidation.isValid && <div className="text-xs text-destructive">{rangeValidation.error}</div>}
             {validationError && <div className="text-xs text-destructive">{validationError}</div>}
-            <Button
-              className="w-full"
-              onClick={() => {
-                const validationResult = validateBookingDateTimeRange({ fromDate, toDate, startTime, endTime });
-                if (!validationResult.isValid) {
-                  setValidationError(validationResult.error ?? null);
-                  return;
-                }
-                setValidationError(null);
-                book.mutate({
-                  equipment_id: id,
-                  booking_date: fromDate,
-                  end_date: toDate,
-                  start_time: startTime,
-                  end_time: endTime,
-                  quantity,
-                  purpose,
-                });
-              }}
-              disabled={book.isPending || !canSubmit}
-            >
+            {/* Desktop/tablet: inline button. Mobile uses the fixed bottom action bar instead. */}
+            <Button className="w-full hidden md:inline-flex" onClick={submitBooking} disabled={book.isPending || !canSubmit}>
               Create booking
             </Button>
             <div className="text-[11px] text-muted-foreground">Lab hours: 08:00 – 20:00</div>
           </CardContent>
         </Card>
+      </div>
+
+      {/* Mobile: sticky bottom action bar, thumb-reachable, sits above the bottom nav */}
+      <div
+        className="md:hidden fixed inset-x-0 bottom-14 z-30 border-t bg-card p-3"
+        style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
+      >
+        {!rangeValidation.isValid && <div className="text-xs text-destructive mb-1.5">{rangeValidation.error}</div>}
+        {validationError && <div className="text-xs text-destructive mb-1.5">{validationError}</div>}
+        <Button className="w-full" size="lg" onClick={submitBooking} disabled={book.isPending || !canSubmit}>
+          Create booking {availability.data !== undefined && `· ${availability.data} available`}
+        </Button>
       </div>
 
       <Card>

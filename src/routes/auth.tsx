@@ -75,7 +75,7 @@ function AuthPage() {
       {/* Form side */}
       <div className="flex items-center justify-center p-6 lg:p-12">
         <Card className="w-full max-w-md shadow-elevated border-border">
-          <CardContent className="p-8">
+          <CardContent className="p-6 sm:p-8">
             <div className="lg:hidden mb-6">
               <BrandMark size={28} className="mb-2" />
               <div className="text-xl font-bold tracking-tight">SANLAYAN</div>

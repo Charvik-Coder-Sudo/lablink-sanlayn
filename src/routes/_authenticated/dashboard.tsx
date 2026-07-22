@@ -229,7 +229,7 @@ function DashboardPage() {
     <div className="space-y-6">
       <div className="flex items-end justify-between flex-wrap gap-2">
         <div>
-          <h1 className="text-2xl font-semibold">Welcome, {user?.fullName.split(" ")[0]}</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold">Welcome, {user?.fullName.split(" ")[0]}</h1>
           <p className="text-sm text-muted-foreground">Here's what's happening in the lab today.</p>
         </div>
         <div className="text-xs text-muted-foreground">{format(new Date(), "EEEE, d MMMM yyyy")}</div>
@@ -264,7 +264,7 @@ function DashboardPage() {
             <KpiCard title="Calibration Due (30d)" value={kpis.data?.dueForCalibration ?? "—"} icon={ShieldAlert} to="/equipment" tone={((kpis.data?.dueForCalibration ?? 0) > 0) ? "warning" : "default"} />
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2">
             <Card>
               <CardHeader><CardTitle className="text-sm font-semibold">Equipment utilization</CardTitle></CardHeader>
               <CardContent className="h-64">
@@ -292,7 +292,7 @@ function DashboardPage() {
             </Card>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="text-sm font-semibold">Monthly booking trend</CardTitle>
@@ -352,7 +352,7 @@ function DashboardPage() {
       )}
 
       {(role === "manager" || role === "admin") && departmentStats.data && (
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-2">
           <Card>
             <CardHeader><CardTitle className="text-sm font-semibold">Department booking overview</CardTitle></CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-2">
@@ -438,7 +438,7 @@ function DashboardPage() {
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-sm font-semibold">My upcoming bookings</CardTitle>

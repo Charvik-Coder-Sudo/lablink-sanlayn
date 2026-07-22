@@ -104,14 +104,14 @@ function ImportPage() {
 
   return (
     <div className="space-y-5 max-w-4xl">
-      <div><h1 className="text-2xl font-semibold">Import users</h1><p className="text-sm text-muted-foreground">Bulk-create accounts from an Excel workbook.</p></div>
+      <div><h1 className="text-xl sm:text-2xl font-semibold">Import users</h1><p className="text-sm text-muted-foreground">Bulk-create accounts from an Excel workbook.</p></div>
 
       <Card>
         <CardHeader><CardTitle className="text-sm font-semibold flex items-center gap-2"><UploadCloud className="h-4 w-4" /> Upload Excel</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-wrap gap-3 items-center">
-            <Input type="file" accept=".xlsx,.xls" onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} className="max-w-sm" />
-            <Button variant="outline" onClick={downloadTemplate}><Download className="h-4 w-4 mr-2" /> Download template</Button>
+            <Input type="file" accept=".xlsx,.xls" onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} className="w-full sm:max-w-sm" />
+            <Button variant="outline" onClick={downloadTemplate} className="w-full sm:w-auto"><Download className="h-4 w-4 mr-2" /> Download template</Button>
           </div>
           <div className="text-xs text-muted-foreground">
             Columns: Employee Name, Company Email, Password, Employee ID, Department, Designation, DOB, Phone.

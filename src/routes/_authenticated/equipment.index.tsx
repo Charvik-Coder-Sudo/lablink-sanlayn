@@ -23,7 +23,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, Search, Pencil, Trash2, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, ArrowUpDown, UploadCloud, Loader2, Download } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, ArrowUpDown, UploadCloud, Loader2, Download, SlidersHorizontal } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import * as XLSX from "xlsx";
 
@@ -76,7 +76,9 @@ function EquipmentListPage() {
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [page, setPage] = useState(0);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const qc = useQueryClient();
+  const activeFilterCount = (category !== "all" ? 1 : 0) + (availabilityFilter !== "all" ? 1 : 0);
 
   const query = useQuery({
     queryKey: ["equipment-list", search],
@@ -150,11 +152,11 @@ function EquipmentListPage() {
     <div className="space-y-5">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
-          <h1 className="text-2xl font-semibold">Equipment</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold">Equipment</h1>
           <p className="text-sm text-muted-foreground">{query.data?.total ?? 0} items in inventory</p>
         </div>
         {canManage && (
-          <div className="flex gap-2">
+          <div className="flex gap-2 w-full sm:w-auto">
             <EquipmentImportDialog onDone={() => qc.invalidateQueries({ queryKey: ["equipment-list"] })} />
             <EquipmentDialog onDone={() => qc.invalidateQueries({ queryKey: ["equipment-list"] })} />
           </div>
@@ -163,36 +165,103 @@ function EquipmentListPage() {
 
       <Card>
         <CardContent className="p-4 flex flex-wrap gap-3">
-          <div className="relative flex-1 min-w-[220px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} placeholder="Search by name, asset ID, model, serial…" className="pl-9" />
+          <div className="flex gap-2 w-full sm:w-auto sm:flex-1">
+            <div className="relative flex-1 min-w-0 sm:min-w-[220px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input value={search} onChange={(e) => { setSearch(e.target.value); setPage(0); }} placeholder="Search equipment…" className="pl-9" />
+            </div>
+            <Button
+              variant="outline"
+              className="sm:hidden shrink-0 relative"
+              size="icon"
+              onClick={() => setFiltersOpen((o) => !o)}
+              aria-label="Toggle filters"
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+              {activeFilterCount > 0 && <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-primary text-primary-foreground text-[10px] grid place-items-center">{activeFilterCount}</span>}
+            </Button>
           </div>
-          <Select value={category} onValueChange={(v) => { setCategory(v); setPage(0); }}>
-            <SelectTrigger className="w-44"><SelectValue placeholder="Category" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All categories</SelectItem>
-              {categories.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-            </SelectContent>
-          </Select>
-          <Select value={availabilityFilter} onValueChange={(v) => { setAvailabilityFilter(v as typeof availabilityFilter); setPage(0); }}>
-            <SelectTrigger className="w-48"><SelectValue placeholder="Availability" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All availability</SelectItem>
-              <SelectItem value="available">Available</SelectItem>
-              <SelectItem value="booked">Booked</SelectItem>
-              <SelectItem value="reserved">Reserved</SelectItem>
-              <SelectItem value="unavailable">Under maintenance</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className={cn("w-full flex flex-wrap gap-3 sm:w-auto sm:contents", !filtersOpen && "hidden sm:flex")}>
+            <Select value={category} onValueChange={(v) => { setCategory(v); setPage(0); }}>
+              <SelectTrigger className="w-full sm:w-44"><SelectValue placeholder="Category" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All categories</SelectItem>
+                {categories.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={availabilityFilter} onValueChange={(v) => { setAvailabilityFilter(v as typeof availabilityFilter); setPage(0); }}>
+              <SelectTrigger className="w-full sm:w-48"><SelectValue placeholder="Availability" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All availability</SelectItem>
+                <SelectItem value="available">Available</SelectItem>
+                <SelectItem value="booked">Booked</SelectItem>
+                <SelectItem value="reserved">Reserved</SelectItem>
+                <SelectItem value="unavailable">Under maintenance</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </CardContent>
       </Card>
 
-      <Card className="overflow-hidden">
-        {query.isLoading ? (
-          <div className="text-center text-sm text-muted-foreground py-10">Loading equipment…</div>
-        ) : sorted.length === 0 ? (
-          <div className="text-center text-sm text-muted-foreground py-10">No equipment matches your filters.</div>
-        ) : (
+      {query.isLoading ? (
+        <Card><div className="text-center text-sm text-muted-foreground py-10">Loading equipment…</div></Card>
+      ) : sorted.length === 0 ? (
+        <Card><div className="text-center text-sm text-muted-foreground py-10">No equipment matches your filters.</div></Card>
+      ) : (
+        <>
+          {/* Mobile: card list (no horizontal scrolling) */}
+          <div className="md:hidden space-y-3">
+            {pageRows.map((e, i) => {
+              const cfg = STATUS_CONFIG[e.availability.state];
+              const bookingDisabled = e.availability.state === "booked" || e.availability.state === "unavailable";
+              return (
+                <Card key={e.id}>
+                  <CardContent className="p-4 space-y-2.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-[11px] text-muted-foreground">#{page * PAGE_SIZE + i + 1} · {e.category}</div>
+                        <Link to="/equipment/$id" params={{ id: e.id }} className="font-medium hover:text-primary block truncate">{e.name}</Link>
+                        <div className="text-xs text-muted-foreground truncate">{e.manufacturer || "—"} {e.model || ""}</div>
+                      </div>
+                      <span className={cn("inline-flex items-center gap-1.5 text-xs font-medium whitespace-nowrap shrink-0", cfg.text)}>
+                        <span className={cn("h-2 w-2 rounded-full shrink-0", cfg.dot)} />
+                        {cfg.label}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                      <div><span className="text-foreground font-medium">Asset ID:</span> {e.equipment_code}</div>
+                      <div><span className="text-foreground font-medium">Qty:</span> {e.total_quantity}</div>
+                      <div className="col-span-2 truncate"><span className="text-foreground font-medium">Serial:</span> {e.serial_number || "—"}</div>
+                      {e.calibration_due_date && (
+                        <div className={cn("col-span-2", e.calibration_due_date < todayStr ? "text-destructive font-medium" : "")}>
+                          <span className="text-foreground font-medium">Cal. due:</span> {e.calibration_due_date}
+                        </div>
+                      )}
+                      {e.availability.state === "booked" && e.availability.bookedBy && (
+                        <div className="col-span-2 truncate"><span className="text-foreground font-medium">Booked by:</span> {e.availability.bookedBy.name}</div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 pt-1">
+                      <Link to="/equipment/$id" params={{ id: e.id }} className="flex-1">
+                        <Button size="sm" variant="ghost" className="w-full">Details</Button>
+                      </Link>
+                      {bookingDisabled ? (
+                        <Button size="sm" variant="outline" className="flex-1" disabled>Book</Button>
+                      ) : (
+                        <Link to="/equipment/$id" params={{ id: e.id }} className="flex-1">
+                          <Button size="sm" variant="outline" className="w-full">Book</Button>
+                        </Link>
+                      )}
+                      {canManage && <EquipmentRowActions equipment={e} onDone={() => qc.invalidateQueries({ queryKey: ["equipment-list"] })} />}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+
+          {/* Tablet/desktop: full table */}
+          <Card className="hidden md:block overflow-hidden">
           <div className="overflow-x-auto">
             <div className="max-h-[65vh] overflow-y-auto">
               <table className="w-full text-sm border-collapse min-w-[1500px]">
@@ -274,10 +343,11 @@ function EquipmentListPage() {
               </table>
             </div>
           </div>
-        )}
-      </Card>
+          </Card>
+        </>
+      )}
 
-      <div className="flex items-center justify-between text-sm">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-sm">
         <div className="text-muted-foreground">Showing {sorted.length === 0 ? 0 : page * PAGE_SIZE + 1}–{Math.min(sorted.length, page * PAGE_SIZE + PAGE_SIZE)} of {sorted.length} · Page {page + 1} of {totalPages}</div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage((p) => p - 1)}><ChevronLeft className="h-4 w-4" /></Button>
@@ -578,7 +648,7 @@ function EquipmentImportDialog({ onDone }: { onDone: () => void }) {
 
           {phase === "completed" && (
             <>
-              <div className="grid grid-cols-5 gap-2 text-center text-sm">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center text-sm">
                 <div className="rounded-md border p-2"><div className="text-xs text-muted-foreground">Total</div><div className="text-lg font-semibold">{previewRows.length}</div></div>
                 <div className="rounded-md border p-2"><div className="text-xs text-muted-foreground">Imported</div><div className="text-lg font-semibold text-emerald-600 dark:text-emerald-400">{imported}</div></div>
                 <div className="rounded-md border p-2"><div className="text-xs text-muted-foreground">Skipped</div><div className="text-lg font-semibold text-amber-600 dark:text-amber-400">{skipped}</div></div>

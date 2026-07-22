@@ -63,16 +63,68 @@ function UsersPage() {
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <div><h1 className="text-2xl font-semibold">Users</h1><p className="text-sm text-muted-foreground">{q.data?.length ?? 0} accounts</p></div>
+        <div><h1 className="text-xl sm:text-2xl font-semibold">Users</h1><p className="text-sm text-muted-foreground">{q.data?.length ?? 0} accounts</p></div>
         <Dialog open={openNew} onOpenChange={setOpenNew}>
-          <DialogTrigger asChild><Button><Plus className="h-4 w-4 mr-2" /> New user</Button></DialogTrigger>
+          <DialogTrigger asChild><Button className="w-full sm:w-auto"><Plus className="h-4 w-4 mr-2" /> New user</Button></DialogTrigger>
           <NewUserDialog onCreate={(input) => create.mutate(input)} pending={create.isPending} />
         </Dialog>
       </div>
 
       <Card><CardContent className="p-4"><Input placeholder="Search name, email, ID, department…" value={search} onChange={(e) => setSearch(e.target.value)} /></CardContent></Card>
 
-      <Card>
+      {filtered.length === 0 ? (
+        <Card><div className="text-center py-10 text-muted-foreground text-sm">No users.</div></Card>
+      ) : (
+        <>
+          {/* Mobile: card list */}
+          <div className="md:hidden space-y-3">
+            {filtered.map((u) => (
+              <Card key={u.id}>
+                <CardContent className="p-4 space-y-2.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="font-medium truncate">{u.full_name}</div>
+                      <div className="text-xs text-muted-foreground truncate">{u.employee_id} · {u.email}</div>
+                      <div className="text-xs text-muted-foreground truncate">{u.department ?? "—"}{u.designation ? ` · ${u.designation}` : ""}</div>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <ResetPasswordDialog onReset={(pw) => resetFn({ data: { user_id: u.id, new_password: pw } }).then(() => toast.success("Password reset"))} />
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild><Button size="sm" variant="ghost"><Trash2 className="h-4 w-4 text-destructive" /></Button></AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete {u.full_name}?</AlertDialogTitle>
+                            <AlertDialogDescription>Removes the user and their bookings. This cannot be undone.</AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={async () => { await deleteFn({ data: { user_id: u.id } }); qc.invalidateQueries({ queryKey: ["admin-users"] }); toast.success("User deleted"); }}>Delete</AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </div>
+                  </div>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {(["admin","manager","employee"] as const).map((r) => (
+                      <Badge
+                        key={r} variant={u.roles.includes(r) ? "default" : "secondary"}
+                        className={`cursor-pointer capitalize ${u.roles.includes(r) ? "" : "opacity-40"}`}
+                        onClick={async () => {
+                          if (r === "employee") return;
+                          await roleFn({ data: { user_id: u.id, role: r, enable: !u.roles.includes(r) } });
+                          qc.invalidateQueries({ queryKey: ["admin-users"] });
+                          toast.success("Role updated");
+                        }}
+                      >{r}</Badge>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {/* Tablet/desktop: full table */}
+          <Card className="hidden md:block">
         <CardContent className="p-0 overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
@@ -122,11 +174,12 @@ function UsersPage() {
                   </td>
                 </tr>
               ))}
-              {filtered.length === 0 && <tr><td colSpan={5} className="text-center py-10 text-muted-foreground">No users.</td></tr>}
             </tbody>
           </table>
         </CardContent>
-      </Card>
+          </Card>
+        </>
+      )}
     </div>
   );
 }
@@ -138,7 +191,7 @@ function NewUserDialog({ onCreate, pending }: { onCreate: (input: { email: strin
       <DialogHeader><DialogTitle>New user</DialogTitle></DialogHeader>
       <form onSubmit={(e) => { e.preventDefault(); onCreate(form); }} className="grid gap-3">
         <div><Label>Full name</Label><Input required value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} /></div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div><Label>Employee ID</Label><Input required value={form.employee_id} onChange={(e) => setForm({ ...form, employee_id: e.target.value })} /></div>
           <div><Label>Role</Label>
             <Select value={form.role} onValueChange={(v) => setForm({ ...form, role: v as "admin"|"manager"|"employee" })}>
@@ -153,7 +206,7 @@ function NewUserDialog({ onCreate, pending }: { onCreate: (input: { email: strin
         </div>
         <div><Label>Email (@sanlayan.com)</Label><Input type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
         <div><Label>Temporary password</Label><Input type="text" required minLength={8} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} /></div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div><Label>Department</Label><Input value={form.department} onChange={(e) => setForm({ ...form, department: e.target.value })} /></div>
           <div><Label>Designation</Label><Input value={form.designation} onChange={(e) => setForm({ ...form, designation: e.target.value })} /></div>
         </div>

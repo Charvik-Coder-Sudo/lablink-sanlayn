@@ -15,13 +15,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Download, Loader2 } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Download, Loader2, SlidersHorizontal, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import {
   fetchBookingAnalyticsRows, fetchEquipmentUtilization,
   computeDepartmentUsage, computeCategoryUsage, computeTopEquipment, computeMonthlyTrend,
 } from "@/lib/analytics";
 import { exportReportsExcel, exportReportCsv, type ReportType, type ExportFilters } from "@/lib/reports-export";
+import { cn } from "@/lib/utils";
 
 ChartJS.register(ArcElement, BarElement, CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend);
 
@@ -39,8 +41,10 @@ function ReportsPage() {
   const [equipment, setEquipment] = useState("all");
   const [userId, setUserId] = useState("all");
   const [status, setStatus] = useState("all");
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const filters: ExportFilters = { from, to, department, category, equipment, userId, status };
+  const activeFilterCount = [department, category, equipment, userId, status].filter((v) => v !== "all").length;
 
   const filterOptions = useQuery({
     queryKey: ["report-filter-options"],
@@ -79,72 +83,86 @@ function ReportsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-end justify-between flex-wrap gap-3">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Reports</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold">Reports</h1>
           <p className="text-sm text-muted-foreground">{from} → {to} · {rows.data?.length ?? 0} bookings</p>
         </div>
-        <ExportDialog filters={filters} />
+        <div className="w-full sm:w-auto"><ExportDialog filters={filters} /></div>
       </div>
 
       <Card>
-        <CardContent className="p-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
-          <div className="space-y-1"><Label className="text-xs">From</Label><Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
-          <div className="space-y-1"><Label className="text-xs">To</Label><Input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div>
-          <div className="space-y-1">
-            <Label className="text-xs">Department</Label>
-            <Select value={department} onValueChange={setDepartment}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All departments</SelectItem>
-                {filterOptions.data?.departments.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Category</Label>
-            <Select value={category} onValueChange={setCategory}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All categories</SelectItem>
-                {filterOptions.data?.categoryList.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Equipment</Label>
-            <Select value={equipment} onValueChange={setEquipment}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All equipment</SelectItem>
-                {filterOptions.data?.equipmentList.map((e) => <SelectItem key={e} value={e}>{e}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">User</Label>
-            <Select value={userId} onValueChange={setUserId}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All users</SelectItem>
-                {filterOptions.data?.users.map((u) => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Status</Label>
-            <Select value={status} onValueChange={setStatus}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
-                <SelectItem value="booked">Booked</SelectItem>
-                <SelectItem value="returned">Returned</SelectItem>
-                <SelectItem value="cancelled">Cancelled</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
+        <Collapsible open={filtersOpen} onOpenChange={setFiltersOpen}>
+          <CardContent className="p-4 space-y-3">
+            <div className="grid gap-3 grid-cols-2 sm:grid-cols-2">
+              <div className="space-y-1"><Label className="text-xs">From</Label><Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></div>
+              <div className="space-y-1"><Label className="text-xs">To</Label><Input type="date" value={to} onChange={(e) => setTo(e.target.value)} /></div>
+            </div>
+            <CollapsibleTrigger asChild>
+              <Button variant="outline" size="sm" className="sm:hidden w-full justify-between">
+                <span className="inline-flex items-center gap-2"><SlidersHorizontal className="h-4 w-4" /> More filters {activeFilterCount > 0 && `(${activeFilterCount})`}</span>
+                <ChevronDown className={cn("h-4 w-4 transition-transform", filtersOpen && "rotate-180")} />
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="sm:contents">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5 mt-3 sm:mt-0">
+                <div className="space-y-1">
+                  <Label className="text-xs">Department</Label>
+                  <Select value={department} onValueChange={setDepartment}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All departments</SelectItem>
+                      {filterOptions.data?.departments.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Category</Label>
+                  <Select value={category} onValueChange={setCategory}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All categories</SelectItem>
+                      {filterOptions.data?.categoryList.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Equipment</Label>
+                  <Select value={equipment} onValueChange={setEquipment}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All equipment</SelectItem>
+                      {filterOptions.data?.equipmentList.map((e) => <SelectItem key={e} value={e}>{e}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">User</Label>
+                  <Select value={userId} onValueChange={setUserId}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All users</SelectItem>
+                      {filterOptions.data?.users.map((u) => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Status</Label>
+                  <Select value={status} onValueChange={setStatus}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All statuses</SelectItem>
+                      <SelectItem value="booked">Booked</SelectItem>
+                      <SelectItem value="returned">Returned</SelectItem>
+                      <SelectItem value="cancelled">Cancelled</SelectItem>
+                      <SelectItem value="completed">Completed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </CollapsibleContent>
+          </CardContent>
+        </Collapsible>
       </Card>
 
       <div className="grid gap-4 md:grid-cols-4">
@@ -154,7 +172,7 @@ function ReportsPage() {
         <MetricCard label="Return rate" value={`${rows.data?.length ? Math.round((returned / rows.data.length) * 100) : 0}%`} />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader><CardTitle className="text-sm font-semibold">Monthly booking trend</CardTitle></CardHeader>
           <CardContent className="h-72">
@@ -185,7 +203,7 @@ function ReportsPage() {
         </Card>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader><CardTitle className="text-sm font-semibold">Most used equipment</CardTitle></CardHeader>
           <CardContent className="h-72">
@@ -282,7 +300,7 @@ function ExportDialog({ filters }: { filters: ExportFilters }) {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild><Button><Download className="h-4 w-4 mr-2" /> Export Report</Button></DialogTrigger>
+      <DialogTrigger asChild><Button className="w-full sm:w-auto"><Download className="h-4 w-4 mr-2" /> Export Report</Button></DialogTrigger>
       <DialogContent className="max-w-md">
         <DialogHeader><DialogTitle>Export report</DialogTitle></DialogHeader>
         <div className="space-y-4">

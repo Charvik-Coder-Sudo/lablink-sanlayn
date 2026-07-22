@@ -55,14 +55,24 @@ function BookingsPage() {
     );
   });
 
+  function invalidateAvailability() {
+    // A cancelled/returned booking must free the equipment immediately everywhere its
+    // availability is shown, not just on this page — these caches would otherwise sit stale
+    // until their next 60s poll.
+    qc.invalidateQueries({ queryKey: ["bookings"] });
+    qc.invalidateQueries({ queryKey: ["equipment-booking-slots"] });
+    qc.invalidateQueries({ queryKey: ["schedule"] });
+    qc.invalidateQueries({ queryKey: ["avail"] });
+  }
+
   const cancel = useMutation({
     mutationFn: (id: string) => cancelBooking(id),
-    onSuccess: () => { toast.success("Booking cancelled"); qc.invalidateQueries({ queryKey: ["bookings"] }); },
+    onSuccess: () => { toast.success("Booking cancelled"); invalidateAvailability(); },
     onError: (e: Error) => toast.error(e.message),
   });
   const ret = useMutation({
     mutationFn: (id: string) => markReturned(id),
-    onSuccess: () => { toast.success("Marked returned"); qc.invalidateQueries({ queryKey: ["bookings"] }); },
+    onSuccess: () => { toast.success("Marked returned"); invalidateAvailability(); },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -78,24 +88,24 @@ function BookingsPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-2xl font-semibold">Bookings</h1>
+        <h1 className="text-xl sm:text-2xl font-semibold">Bookings</h1>
         <p className="text-sm text-muted-foreground">Manage equipment reservations.</p>
       </div>
 
       <Card>
         <CardContent className="p-4 flex flex-wrap gap-3 items-center">
           {canManage && (
-            <Tabs value={scope} onValueChange={(v) => setScope(v as "mine" | "all")}>
-              <TabsList>
-                <TabsTrigger value="all">All bookings</TabsTrigger>
-                <TabsTrigger value="mine">My bookings</TabsTrigger>
+            <Tabs value={scope} onValueChange={(v) => setScope(v as "mine" | "all")} className="w-full sm:w-auto">
+              <TabsList className="w-full sm:w-auto">
+                <TabsTrigger value="all" className="flex-1 sm:flex-none">All bookings</TabsTrigger>
+                <TabsTrigger value="mine" className="flex-1 sm:flex-none">My bookings</TabsTrigger>
               </TabsList>
               <TabsContent value="all" /><TabsContent value="mine" />
             </Tabs>
           )}
-          <Input placeholder="Search equipment, user, booking id…" value={search} onChange={(e) => setSearch(e.target.value)} className="w-64" />
+          <Input placeholder="Search equipment, user, booking id…" value={search} onChange={(e) => setSearch(e.target.value)} className="w-full sm:w-64" />
           <Select value={status} onValueChange={setStatus}>
-            <SelectTrigger className="w-40"><SelectValue placeholder="Status" /></SelectTrigger>
+            <SelectTrigger className="w-full sm:w-40"><SelectValue placeholder="Status" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All statuses</SelectItem>
               <SelectItem value="booked">Booked</SelectItem>
@@ -106,8 +116,44 @@ function BookingsPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardContent className="p-0 overflow-x-auto">
+      {filtered.length === 0 ? (
+        <Card><div className="text-center py-10 text-muted-foreground text-sm">No bookings.</div></Card>
+      ) : (
+        <>
+          {/* Mobile: card list */}
+          <div className="md:hidden space-y-3">
+            {filtered.map((b) => (
+              <Card key={b.id}>
+                <CardContent className="p-4 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="font-medium truncate">{b.equipment?.name ?? "—"}</div>
+                      <div className="text-xs text-muted-foreground">{b.equipment?.equipment_code}</div>
+                    </div>
+                    <Badge variant={b.status === "booked" ? "default" : b.status === "cancelled" ? "destructive" : "secondary"} className="capitalize shrink-0">{b.status}</Badge>
+                  </div>
+                  <div className="text-xs text-muted-foreground space-y-0.5">
+                    <div>{b.profile?.full_name ?? "—"}{b.profile?.department ? ` · ${b.profile.department}` : ""}</div>
+                    <div>
+                      {format(parseISO(b.booking_date), "d MMM yyyy")}
+                      {b.end_date !== b.booking_date && <> – {format(parseISO(b.end_date), "d MMM yyyy")}</>}
+                      {" · "}{b.start_time.slice(0,5)}–{b.end_time.slice(0,5)} · Qty {b.quantity}
+                    </div>
+                  </div>
+                  {(canManage || canCancel(b)) && (b.status === "booked") && (
+                    <div className="flex items-center gap-2 pt-1">
+                      {canManage && <Button size="sm" variant="outline" className="flex-1" onClick={() => ret.mutate(b.id)}>Return</Button>}
+                      {canCancel(b) && <Button size="sm" variant="ghost" className="flex-1 text-destructive" onClick={() => cancel.mutate(b.id)}>Cancel</Button>}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {/* Tablet/desktop: full table */}
+          <Card className="hidden md:block">
+            <CardContent className="p-0 overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
               <tr>
@@ -121,7 +167,6 @@ function BookingsPage() {
               </tr>
             </thead>
             <tbody className="divide-y">
-              {filtered.length === 0 && <tr><td colSpan={7} className="text-center py-10 text-muted-foreground">No bookings.</td></tr>}
               {filtered.map((b) => (
                 <tr key={b.id} className="hover:bg-muted/30">
                   <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{b.id.slice(0,8)}</td>
@@ -156,8 +201,10 @@ function BookingsPage() {
               ))}
             </tbody>
           </table>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        </>
+      )}
     </div>
   );
 }

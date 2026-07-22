@@ -34,7 +34,7 @@ function AuditPage() {
 
   return (
     <div className="space-y-5">
-      <div><h1 className="text-2xl font-semibold">Audit log</h1><p className="text-sm text-muted-foreground">System activity across the platform.</p></div>
+      <div><h1 className="text-xl sm:text-2xl font-semibold">Audit log</h1><p className="text-sm text-muted-foreground">System activity across the platform.</p></div>
       <Card><CardContent className="p-4"><Input placeholder="Search action, user, description…" value={search} onChange={(e) => setSearch(e.target.value)} /></CardContent></Card>
       <Card>
         <CardHeader><CardTitle className="text-sm font-semibold">{rows.length} events</CardTitle></CardHeader>
@@ -45,7 +45,7 @@ function AuditPage() {
                 <th className="text-left px-4 py-3">Timestamp</th>
                 <th className="text-left px-4 py-3">User</th>
                 <th className="text-left px-4 py-3">Action</th>
-                <th className="text-left px-4 py-3">Description</th>
+                <th className="text-left px-4 py-3 hidden sm:table-cell">Description</th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -53,8 +53,11 @@ function AuditPage() {
                 <tr key={r.id}>
                   <td className="px-4 py-2 text-xs whitespace-nowrap">{format(new Date(r.created_at), "d MMM yyyy HH:mm:ss")}</td>
                   <td className="px-4 py-2">{r.profile?.full_name ?? "system"}</td>
-                  <td className="px-4 py-2 capitalize">{r.action.replaceAll("_"," ")}</td>
-                  <td className="px-4 py-2 text-muted-foreground">{r.description ?? ""}</td>
+                  <td className="px-4 py-2 capitalize">
+                    {r.action.replaceAll("_"," ")}
+                    <div className="sm:hidden text-xs text-muted-foreground normal-case">{r.description ?? ""}</div>
+                  </td>
+                  <td className="px-4 py-2 text-muted-foreground hidden sm:table-cell">{r.description ?? ""}</td>
                 </tr>
               ))}
               {rows.length === 0 && <tr><td colSpan={4} className="text-center py-10 text-muted-foreground">No audit events.</td></tr>}

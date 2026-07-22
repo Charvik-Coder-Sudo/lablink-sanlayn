@@ -84,6 +84,9 @@ function AccessoryDetailPage() {
         cannot_book_in_past: "Cannot book in the past",
         insufficient_quantity: "Not enough accessories available for that slot",
         accessory_unavailable: "Accessory is not available for booking",
+        duplicate_booking: "You already have an overlapping booking for this accessory",
+        not_authenticated: "You must be signed in to book accessories",
+        accessory_not_found: "Accessory not found",
       };
       toast.error(map[e.message] ?? e.message);
     },
@@ -98,8 +101,26 @@ function AccessoryDetailPage() {
   const liveAvailability = computeAccessoryAvailability(currentStatus.data?.[id] ?? [], a.quantity);
   const canSubmit = Boolean(purpose.trim()) && rangeValidation.isValid && (availability.data ?? 0) >= quantity && a.status === "active";
 
+  function submitBooking() {
+    const validationResult = validateBookingDateTimeRange({ fromDate, toDate, startTime, endTime });
+    if (!validationResult.isValid) {
+      setValidationError(validationResult.error ?? null);
+      return;
+    }
+    setValidationError(null);
+    book.mutate({
+      accessory_id: id,
+      booking_date: fromDate,
+      end_date: toDate,
+      start_time: startTime,
+      end_time: endTime,
+      quantity,
+      purpose,
+    });
+  }
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-20 md:pb-0">
       <Link to="/accessories" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" /> Back to accessories</Link>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -107,10 +128,10 @@ function AccessoryDetailPage() {
           <CardHeader>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <CardTitle className="text-xl">{a.description}</CardTitle>
+                <CardTitle className="text-lg sm:text-xl">{a.description}</CardTitle>
                 <div className="text-sm text-muted-foreground mt-0.5">{a.make} {a.model}</div>
               </div>
-              <Badge variant={a.status === "active" ? "default" : "secondary"} className="capitalize">{a.status}</Badge>
+              <Badge variant={a.status === "active" ? "default" : "secondary"} className="capitalize shrink-0">{a.status}</Badge>
             </div>
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-2 text-sm">
@@ -157,32 +178,25 @@ function AccessoryDetailPage() {
             <div className="text-xs text-muted-foreground">Available for selected slot: <span className="font-medium text-foreground">{availability.data ?? "—"}</span></div>
             {!rangeValidation.isValid && <div className="text-xs text-destructive">{rangeValidation.error}</div>}
             {validationError && <div className="text-xs text-destructive">{validationError}</div>}
-            <Button
-              className="w-full"
-              onClick={() => {
-                const validationResult = validateBookingDateTimeRange({ fromDate, toDate, startTime, endTime });
-                if (!validationResult.isValid) {
-                  setValidationError(validationResult.error ?? null);
-                  return;
-                }
-                setValidationError(null);
-                book.mutate({
-                  accessory_id: id,
-                  booking_date: fromDate,
-                  end_date: toDate,
-                  start_time: startTime,
-                  end_time: endTime,
-                  quantity,
-                  purpose,
-                });
-              }}
-              disabled={book.isPending || !canSubmit}
-            >
+            {/* Desktop/tablet: inline button. Mobile uses the fixed bottom action bar instead. */}
+            <Button className="w-full hidden md:inline-flex" onClick={submitBooking} disabled={book.isPending || !canSubmit}>
               Create booking
             </Button>
             <div className="text-[11px] text-muted-foreground">Lab hours: 08:00 – 20:00</div>
           </CardContent>
         </Card>
+      </div>
+
+      {/* Mobile: sticky bottom action bar, thumb-reachable, sits above the bottom nav */}
+      <div
+        className="md:hidden fixed inset-x-0 bottom-14 z-30 border-t bg-card p-3"
+        style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
+      >
+        {!rangeValidation.isValid && <div className="text-xs text-destructive mb-1.5">{rangeValidation.error}</div>}
+        {validationError && <div className="text-xs text-destructive mb-1.5">{validationError}</div>}
+        <Button className="w-full" size="lg" onClick={submitBooking} disabled={book.isPending || !canSubmit}>
+          Create booking {availability.data !== undefined && `· ${availability.data} available`}
+        </Button>
       </div>
 
       <Card>
