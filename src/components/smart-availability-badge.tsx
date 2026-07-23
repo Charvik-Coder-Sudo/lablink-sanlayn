@@ -20,7 +20,7 @@ export function SmartAvailabilityBadge({
   if (status !== "active") {
     const maintenance = status === "maintenance";
     return (
-      <Shell tone="slate" dot="bg-slate-400" heading={maintenance ? "Under Maintenance" : "Retired"}>
+      <Shell tone={maintenance ? "blue" : "slate"} dot={maintenance ? "bg-blue-500" : "bg-slate-400"} heading={maintenance ? "Under Maintenance" : "Retired"}>
         <span className="text-muted-foreground">
           {maintenance ? `This ${itemLabel} is temporarily out of service.` : `This ${itemLabel} is no longer in service.`}
         </span>
@@ -65,12 +65,14 @@ const TONE: Record<string, string> = {
   emerald: "border-emerald-500/30 bg-emerald-500/5",
   amber: "border-amber-500/30 bg-amber-500/5",
   red: "border-red-500/30 bg-red-500/5",
+  blue: "border-blue-500/30 bg-blue-500/5",
   slate: "border-border bg-muted/30",
 };
 const HEAD_TONE: Record<string, string> = {
   emerald: "text-emerald-700 dark:text-emerald-400",
   amber: "text-amber-700 dark:text-amber-400",
   red: "text-red-700 dark:text-red-400",
+  blue: "text-blue-700 dark:text-blue-400",
   slate: "text-muted-foreground",
 };
 

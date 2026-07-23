@@ -8,7 +8,7 @@ import type { QueryClient } from "@tanstack/react-query";
  */
 export function invalidateBookingRelatedQueries(qc: QueryClient) {
   const keys = [
-    "bookings", "my-active-bookings",
+    "bookings", "accessory-bookings", "my-active-bookings",
     "equipment-booking-slots", "schedule", "avail",
     "accessory-booking-slots", "accessory-schedule", "accessory-avail",
     "dashboard-kpis", "dashboard-utilization", "dashboard-analytics-rows",

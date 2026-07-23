@@ -88,8 +88,8 @@ function AuthenticatedLayout() {
             <Link
               key={item.to}
               to={item.to}
-              className="group flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-              activeProps={{ className: "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary hover:text-sidebar-primary-foreground" }}
+              className="group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-sidebar-foreground transition-colors duration-200 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              activeProps={{ className: "!bg-accent !text-primary font-semibold hover:!bg-accent hover:!text-primary before:absolute before:left-0 before:top-1/2 before:-translate-y-1/2 before:h-6 before:w-[3px] before:rounded-r-full before:bg-primary" }}
             >
               <item.icon className="h-4 w-4 shrink-0 transition-transform group-hover:scale-110" />
               <span className="truncate">{item.label}</span>

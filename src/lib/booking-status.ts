@@ -37,6 +37,6 @@ export const BOOKING_DISPLAY_STATUS_CONFIG: Record<BookingDisplayStatus, { label
   booked: { label: "Booked", className: "text-blue-700 dark:text-blue-400 bg-blue-500/10" },
   in_use: { label: "In Use", className: "text-amber-700 dark:text-amber-400 bg-amber-500/10" },
   overdue: { label: "Overdue", className: "text-red-700 dark:text-red-400 bg-red-500/10" },
-  returned: { label: "Returned", className: "text-emerald-700 dark:text-emerald-400 bg-emerald-500/10" },
-  cancelled: { label: "Cancelled", className: "text-muted-foreground bg-muted" },
+  returned: { label: "Returned", className: "text-slate-600 dark:text-slate-300 bg-slate-500/10" },
+  cancelled: { label: "Cancelled", className: "text-rose-800 dark:text-rose-300 bg-rose-500/12" },
 };

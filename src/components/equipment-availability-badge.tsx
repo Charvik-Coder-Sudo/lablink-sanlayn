@@ -5,7 +5,7 @@ export const AVAILABILITY_CONFIG: Record<EquipmentAvailability["state"], { dot: 
   available: { dot: "bg-emerald-500", text: "text-emerald-700 dark:text-emerald-400", emoji: "🟢", label: () => "Available" },
   limited: { dot: "bg-amber-500", text: "text-amber-700 dark:text-amber-400", emoji: "🟡", label: (a) => `Partially Available (${a.availableQty} of ${a.totalQty})` },
   fully_booked: { dot: "bg-red-500", text: "text-red-700 dark:text-red-400", emoji: "🔴", label: () => "Unavailable" },
-  unavailable: { dot: "bg-slate-500", text: "text-muted-foreground", emoji: "⚫", label: () => "Under Maintenance" },
+  unavailable: { dot: "bg-blue-500", text: "text-blue-700 dark:text-blue-400", emoji: "🔵", label: () => "Under Maintenance" },
 };
 
 export function EquipmentAvailabilityBadge({ availability }: { availability: EquipmentAvailability }) {

@@ -26,8 +26,12 @@ import { exportReportsExcel, exportReportCsv, type ReportType, type ExportFilter
 import { cn } from "@/lib/utils";
 
 ChartJS.register(ArcElement, BarElement, CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend);
+// Dark command-center chart defaults: muted tick/legend text, faint gridlines, Inter.
+ChartJS.defaults.color = "#64748b";
+ChartJS.defaults.borderColor = "rgba(15,23,42,0.06)";
+ChartJS.defaults.font.family = "Inter, system-ui, sans-serif";
 
-const CHART_COLORS = ["#6A1B9A", "#9C27B0", "#BA68C8", "#4A148C", "#7B1FA2", "#AB47BC", "#CE93D8"];
+const CHART_COLORS = ["#6D28D9", "#7C3AED", "#8B5CF6", "#5B21B6", "#A78BFA", "#9F67F0", "#C4B5FD", "#4C1D95"];
 
 export const Route = createFileRoute("/_authenticated/reports")({
   component: ReportsPage,
@@ -180,7 +184,7 @@ function ReportsPage() {
               <Line
                 data={{
                   labels: monthlyTrend.map(([m]) => format(new Date(`${m}-01`), "MMM yyyy")),
-                  datasets: [{ label: "Bookings", data: monthlyTrend.map(([, v]) => v), borderColor: "#6A1B9A", backgroundColor: "rgba(106,27,154,0.15)", fill: true, tension: 0.3 }],
+                  datasets: [{ label: "Bookings", data: monthlyTrend.map(([, v]) => v), borderColor: "#6D28D9", backgroundColor: "rgba(109,40,217,0.18)", fill: true, tension: 0.3 }],
                 }}
                 options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }}
               />
@@ -194,7 +198,7 @@ function ReportsPage() {
               <Doughnut
                 data={{
                   labels: [`Booked (${utilization.data.bookedPct}%)`, `Idle (${utilization.data.idlePct}%)`, `Maintenance (${utilization.data.maintenancePct}%)`],
-                  datasets: [{ data: [utilization.data.bookedCount, utilization.data.idleCount, utilization.data.maintenanceCount], backgroundColor: ["#EF4444", "#22C55E", "#94A3B8"] }],
+                  datasets: [{ data: [utilization.data.bookedCount, utilization.data.idleCount, utilization.data.maintenanceCount], backgroundColor: ["#EF4444", "#10B981", "#3B82F6"] }],
                 }}
                 options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom" } } }}
               />
@@ -208,7 +212,7 @@ function ReportsPage() {
           <CardHeader><CardTitle className="text-sm font-semibold">Most used equipment</CardTitle></CardHeader>
           <CardContent className="h-72">
             {topEquipment.length > 0 && <Bar
-              data={{ labels: topEquipment.map(([k]) => k), datasets: [{ label: "Units booked", data: topEquipment.map(([, v]) => v), backgroundColor: "#6A1B9A", borderRadius: 4 }] }}
+              data={{ labels: topEquipment.map(([k]) => k), datasets: [{ label: "Units booked", data: topEquipment.map(([, v]) => v), backgroundColor: "#6D28D9", borderRadius: 4 }] }}
               options={{ indexAxis: "y", responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }}
             />}
           </CardContent>
@@ -228,7 +232,7 @@ function ReportsPage() {
         <CardHeader><CardTitle className="text-sm font-semibold">Department usage</CardTitle></CardHeader>
         <CardContent className="h-72">
           {departmentUsage.length > 0 && <Bar
-            data={{ labels: departmentUsage.map(([k]) => k), datasets: [{ label: "Bookings", data: departmentUsage.map(([, v]) => v), backgroundColor: "#6A1B9A", borderRadius: 4 }] }}
+            data={{ labels: departmentUsage.map(([k]) => k), datasets: [{ label: "Bookings", data: departmentUsage.map(([, v]) => v), backgroundColor: "#6D28D9", borderRadius: 4 }] }}
             options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }}
           />}
         </CardContent>

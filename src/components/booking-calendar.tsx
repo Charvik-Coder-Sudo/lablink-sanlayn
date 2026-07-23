@@ -12,7 +12,7 @@ const DAY_DOT: Record<DayState, string> = {
   available: "bg-emerald-500",
   partial: "bg-amber-500",
   booked: "bg-red-500",
-  maintenance: "bg-slate-400",
+  maintenance: "bg-blue-500",
 };
 
 const LEGEND: Array<{ state: DayState; label: string }> = [

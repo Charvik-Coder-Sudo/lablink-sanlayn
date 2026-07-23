@@ -1,3 +1,4 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
 @import "tailwindcss" source(none);
 @source "../src";
 @import "tw-animate-css";
@@ -41,54 +42,79 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
   --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --shadow-elevated: 0 4px 24px -8px oklch(0.35 0.15 300 / 0.15);
+  --shadow-elevated: 0 4px 16px -6px rgb(15 23 42 / 0.08);
 }
 
+/*
+ * SANLAYAN TECHNOLOGIES — Purple & White enterprise design system.
+ * Clean, spacious, engineering-focused (Linear / Notion / Vercel language):
+ * white surfaces on a very light slate substrate, deep-violet #6D28D9 accent.
+ */
 :root {
-  --radius: 0.5rem;
-  --background: oklch(0.976 0.002 300);         /* #F5F5F5 */
-  --foreground: oklch(0.20 0.02 285);            /* near-black */
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.20 0.02 285);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.20 0.02 285);
-  --primary: oklch(0.373 0.176 305);             /* #6A1B9A SANLAYAN purple */
-  --primary-foreground: oklch(0.98 0.005 300);
-  --secondary: oklch(0.16 0.01 285);             /* #121212 */
-  --secondary-foreground: oklch(0.98 0 0);
-  --muted: oklch(0.955 0.004 300);
-  --muted-foreground: oklch(0.45 0.02 285);
-  --accent: oklch(0.94 0.03 305);
-  --accent-foreground: oklch(0.30 0.12 305);
-  --destructive: oklch(0.58 0.22 27);
-  --destructive-foreground: oklch(0.98 0 0);
-  --success: oklch(0.62 0.16 155);
-  --success-foreground: oklch(0.98 0 0);
-  --warning: oklch(0.75 0.16 75);
-  --warning-foreground: oklch(0.20 0.02 285);
-  --border: oklch(0.90 0.005 285);
-  --input: oklch(0.90 0.005 285);
-  --ring: oklch(0.373 0.176 305);
-  --sidebar: oklch(0.16 0.01 285);
-  --sidebar-foreground: oklch(0.90 0.01 300);
-  --sidebar-primary: oklch(0.55 0.20 305);
-  --sidebar-primary-foreground: oklch(0.98 0 0);
-  --sidebar-accent: oklch(0.22 0.02 285);
-  --sidebar-accent-foreground: oklch(0.98 0 0);
-  --sidebar-border: oklch(0.24 0.02 285);
-  --sidebar-ring: oklch(0.55 0.20 305);
-}
+  --radius: 0.75rem;                 /* 12px base → 16px cards (rounded-xl), 12px controls (rounded-lg) */
 
-.dark { color-scheme: dark; }
+  --background: #f8fafc;            /* bg-main — very light slate */
+  --foreground: #0f172a;           /* text-primary */
+
+  --card: #ffffff;                 /* surfaces: cards, tables, dialogs */
+  --card-foreground: #0f172a;
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+
+  --primary: #6d28d9;              /* deep violet */
+  --primary-foreground: #ffffff;
+
+  --secondary: #ffffff;            /* secondary button = white w/ grey border */
+  --secondary-foreground: #0f172a;
+
+  --muted: #f1f5f9;                /* light slate hover / muted surface */
+  --muted-foreground: #64748b;     /* text-secondary */
+
+  --accent: #ede9fe;              /* soft violet — selected / active tint */
+  --accent-foreground: #6d28d9;
+
+  --destructive: #ef4444;          /* danger */
+  --destructive-foreground: #ffffff;
+  --success: #10b981;
+  --success-foreground: #ffffff;
+  --warning: #f59e0b;
+  --warning-foreground: #1a1204;
+
+  --border: #e2e8f0;               /* hairline borders */
+  --input: #cbd5e1;                /* input borders */
+  --ring: #6d28d9;                 /* purple focus ring */
+
+  --sidebar: #ffffff;              /* white left rail */
+  --sidebar-foreground: #64748b;   /* inactive grey text */
+  --sidebar-primary: #6d28d9;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f1f5f9;       /* hover light slate */
+  --sidebar-accent-foreground: #0f172a;
+  --sidebar-border: #e2e8f0;
+  --sidebar-ring: #6d28d9;
+}
 
 @layer base {
   * { border-color: var(--color-border); }
   html, body { height: 100%; }
   body {
-    background-color: var(--color-background);
+    background-color: var(--background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
-  h1,h2,h3,h4 { letter-spacing: -0.01em; }
+  h1, h2, h3, h4 { letter-spacing: -0.015em; }
+
+  /* Thin, unobtrusive light scrollbars. */
+  * { scrollbar-color: #cbd5e1 transparent; scrollbar-width: thin; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; border: 2px solid transparent; background-clip: content-box; }
+  ::-webkit-scrollbar-thumb:hover { background: #94a3b8; background-clip: content-box; }
+}
+
+@layer utilities {
+  /* Subtle entrance animation for dialogs / cards (150–250ms). */
+  @keyframes sl-fade-up { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .animate-fade-up { animation: sl-fade-up 0.2s ease-out both; }
 }
